@@ -1,5 +1,5 @@
-#include "bme280.h"
-#include "debug.h" // Gives access to your debug_println
+#include "bme280_env.h"
+#include "debug.h"
 
 BME280Sensor::BME280Sensor(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}
