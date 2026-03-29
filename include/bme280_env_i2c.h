@@ -4,14 +4,15 @@
 #include <Adafruit_BME280.h>
 
 // A clean struct to pass the data back to your main loop
-struct EnvironmentData {
-    float temperatureF; // °F
+struct EnvironmentDataI2C {
+    float tempC;        // °C
+    float tempF;        // °F
     float humidity;     // %
     float pressure;     // hPa
     bool valid;         // Flag to check if the sensor disconnected
 };
 
-class BME280Sensor {
+class BME280SensorI2C {
 private:
     Adafruit_BME280 _bme;
     TwoWire& _wire;
@@ -19,8 +20,8 @@ private:
 
 public:
     // Constructor uses Dependency Injection for the I2C bus
-    BME280Sensor(TwoWire& wireBus, uint8_t address = 0x76);
+    BME280SensorI2C(TwoWire& wireBus, uint8_t address = 0x76);
     
     bool begin();
-    EnvironmentData readData();
+    EnvironmentDataI2C readData();
 };

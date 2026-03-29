@@ -1,10 +1,10 @@
-#include "bme280_env.h"
+#include "bme280_env_i2c.h"
 #include "debug.h"
 
-BME280Sensor::BME280Sensor(TwoWire& wireBus, uint8_t address) 
+BME280SensorI2C::BME280SensorI2C(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}
 
-bool BME280Sensor::begin() {
+bool BME280SensorI2C::begin() {
     // The Adafruit library accepts the I2C address and a pointer to the shared bus
     if (!_bme.begin(_address, &_wire)) {
         debug_println("BME280 initialization failed. Check wiring and I2C address.");
@@ -22,17 +22,17 @@ bool BME280Sensor::begin() {
     return true;
 }
 
-EnvironmentData BME280Sensor::readData() {
-    EnvironmentData data;
+EnvironmentDataI2C BME280SensorI2C::readData() {
+    EnvironmentDataI2C data;
     
-    float tempC = _bme.readTemperature();
-    data.temperatureF = (tempC * 9.0 / 5.0) + 32.0; 
+    data.tempC = _bme.readTemperature();
+    data.tempF = (data.tempC * 9.0 / 5.0) + 32.0; 
     
     data.humidity = _bme.readHumidity();
     data.pressure = _bme.readPressure() / 100.0F; // Convert Pa to hPa
 
     // Validate the readings (BME280 returns NaN on hardware failure)
-    if (isnan(tempC) || isnan(data.humidity) || isnan(data.pressure)) {
+    if (isnan(data.tempC) || isnan(data.humidity) || isnan(data.pressure)) {
         data.valid = false;
         debug_println("BME280 read error: NaN returned.");
     } else {
