@@ -67,6 +67,8 @@ void setup() {
     setup_webserver();
     // 4. Initialize OTA Server
     setup_ota();
+    // 5. Pull time from NTP server
+    setup_ntp();
 }
 
 
@@ -80,10 +82,10 @@ void loop() {
         debug_println("-----------------------------------");
         last_millis = millis();
         
-        /** HEARTBEAT AND LED SECTION */
+        /** RGB LED SECTION */
         led_state = !led_state;
         neopixelWrite(RGB_LED_PIN, 0, 0, led_state ? 1 : 0);
-        debug_println("Heartbeat: System Nominal");
+        // debug_println("Heartbeat: System Nominal");
 
         handle_telnet();
     }
