@@ -1,17 +1,22 @@
 <script>
     import { onMount } from 'svelte';
 
-    // Mock Live Data
-    let liveData = {
-        temperature: 72.4, // °F
-        soilMoisture: 45,  // %
-    };
-
     // Mock Cycle Data
-    let cycleData = {
+    let sessionData = {
         startDate: "2026-03-01",
         daysElapsed: 25,
         estimatedEndDate: "2026-05-01"
+    };
+
+    // Mock Live Data
+    let liveData = {
+        soilMoistureRaw: 0, // ADC
+        soilMoisture: 0,  // %
+        probeTempF: 0, // °F
+        probeTempC: 0, // °C
+        airTempF: 0, // °F
+        airTempC: 0, // °C
+        airHumidity: 0,
     };
 
     // Mock Historical Stats (7-Day)
@@ -71,7 +76,7 @@
             <h2>Current Readings</h2>
             <div class="reading">
                 <span class="label">Temperature</span>
-                <span class="value">{liveData.temperature}°F</span>
+                <span class="value">{liveData.probeTempF}°F</span>
             </div>
             <div class="reading">
                 <span class="label">Soil Moisture</span>
@@ -83,15 +88,32 @@
             <h2>Cycle Status</h2>
             <div class="reading">
                 <span class="label">Start Date</span>
-                <span class="value">{cycleData.startDate}</span>
+                <span class="value">{sessionData.startDate}</span>
             </div>
             <div class="reading">
                 <span class="label">Days Elapsed</span>
-                <span class="value">{cycleData.daysElapsed}</span>
+                <span class="value">{sessionData.daysElapsed}</span>
             </div>
             <div class="reading">
                 <span class="label">Est. End Date</span>
-                <span class="value">{cycleData.estimatedEndDate}</span>
+                <span class="value">{sessionData.estimatedEndDate}</span>
+            </div>
+        </section>
+
+        
+        <section class="card">
+            <h2>Cycle Status</h2>
+            <div class="reading">
+                <span class="label">Start Date</span>
+                <span class="value">{sessionData.startDate}</span>
+            </div>
+            <div class="reading">
+                <span class="label">Days Elapsed</span>
+                <span class="value">{sessionData.daysElapsed}</span>
+            </div>
+            <div class="reading">
+                <span class="label">Est. End Date</span>
+                <span class="value">{sessionData.estimatedEndDate}</span>
             </div>
         </section>
 
@@ -131,7 +153,7 @@
 
         <section class="card full-width admin-panel">
             <h2>System Administration</h2>
-            
+
             <div class="admin-grid">
                 <div class="firmware-section">
                     <h3>Firmware</h3>
