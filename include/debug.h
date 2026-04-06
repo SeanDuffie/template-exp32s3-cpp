@@ -7,6 +7,7 @@
 extern AsyncWebSocket ws;
 extern WiFiServer telnetServer;
 extern bool update_requested;
+extern String log_buffer;
 
 void setup_debug();
 void debug_print(const char* message);

@@ -8,6 +8,7 @@ AsyncWebSocket ws("/ws");
 WiFiServer telnetServer(23);
 WiFiClient telnetClient;
 bool update_requested = false;
+String log_buffer = "";
 
 void setup_debug() {
     // 1. Start Telnet
@@ -35,8 +36,7 @@ void debug_print(const char* message) {
         telnetClient.print("\r");
     }
 
-    // 3. WebSocket Clients
-    ws.textAll(message);
+    log_buffer += message;
 }
 
 void debug_println(const char* message) {
