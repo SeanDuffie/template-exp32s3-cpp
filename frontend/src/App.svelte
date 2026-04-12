@@ -12,6 +12,7 @@
         startDate: "2026-03-01",  // When was the current collection started?
         estimatedEndDate: "2026-05-01",  // When will the collection be finished?
         daysElapsed: 25,  // How long has the collection been running?
+        upsec: 0,
         uptime: "0s",  // How long since the last powercycle?
         terminalLogs: "...\n",  // Console logs
     });
@@ -48,7 +49,12 @@
     });
 
     // -- Filesystem Data --
-    let fileList = $state([]);
+    // Define the shape of the data coming from the ESP32
+    interface FileData {
+        name: string;
+        size: number;
+    }
+    let fileList = $state<FileData[]>([]);
     
     // // System States
     // let isUpdating = $state(false);
@@ -139,8 +145,8 @@
 
                 // Map JSON keys to your UI variables
                 sessionData.systemTime = data.timestamp;
-                sessionData.uptime = data.uptime;
-
+                sessionData.upsec = Number(data.uptime);
+                sessionData.uptime = new Date(sessionData.upsec * 1000).toISOString().slice(11, 19);
                 
                 // Update active sensor cards dynamically
                 if (data.active_sensors) {
