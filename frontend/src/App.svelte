@@ -39,6 +39,7 @@
         // humidity: "",  // %
         // pressure: "",  // hPa
         // lightLux: "",  // Lumen
+        gpsTime: "",  // Timestamp
         gpsLat: "",
         gpsLon: "",
         gpsAlt: "",
@@ -181,6 +182,7 @@
                 // }
 
                 if (activeSensors.gps) {
+                    liveData.gpsTime = data.gps.time;
                     liveData.gpsLat = data.gps.latitude;
                     liveData.gpsLon = data.gps.longitude;
                     liveData.gpsAlt = data.gps.altitude;
@@ -276,6 +278,7 @@
                 {#if activeSensors.gps}
                 <section class="card">
                     <h2>GPS Location Module (NEO-6M)</h2>
+                    <div class="reading"><span class="label">GPS Time</span><span class="value">{liveData.gpsTime}</span></div>
                     <div class="reading"><span class="label">Latitude</span><span class="value">{liveData.gpsLat}</span></div>
                     <div class="reading"><span class="label">Longitude</span><span class="value">{liveData.gpsLon}</span></div>
                     <div class="reading"><span class="label">Altitude</span><span class="value">{liveData.gpsAlt}</span></div>
