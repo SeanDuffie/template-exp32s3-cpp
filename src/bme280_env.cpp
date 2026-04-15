@@ -35,6 +35,7 @@ EnvironmentData BME280Sensor::readData() {
     if (isnan(data.tempC) || isnan(data.humidity) || isnan(data.pressure)) {
         data.valid = false;
         debug_println("BME280 read error: NaN returned.");
+        begin();
     } else {
         data.valid = true;
     }
