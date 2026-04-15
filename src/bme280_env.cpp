@@ -11,7 +11,7 @@ bool BME280Sensor::begin() {
         return false;
     }
 
-    // Recommended settings for general environment monitoring
+    // Recommended settings for general air monitoring
     _bme.setSampling(Adafruit_BME280::MODE_NORMAL,
                      Adafruit_BME280::SAMPLING_X1,  // Temperature
                      Adafruit_BME280::SAMPLING_X1,  // Pressure
@@ -22,8 +22,8 @@ bool BME280Sensor::begin() {
     return true;
 }
 
-EnvironmentData BME280Sensor::readData() {
-    EnvironmentData data;
+AirData BME280Sensor::readData() {
+    AirData data;
     
     data.tempC = _bme.readTemperature();
     data.tempF = (data.tempC * 9.0 / 5.0) + 32.0; 

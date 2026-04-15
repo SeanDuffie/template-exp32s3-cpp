@@ -17,6 +17,7 @@ struct GPSData {
     bool valid; // True only when the module has a hard satellite fix
 };
 
+/** NOTE: This sensor requires 5V on VCC, not 3.3V. */
 class NEO6MSensor {
 private:
     HardwareSerial& _serial;
@@ -24,11 +25,10 @@ private:
 
 public:
     NEO6MSensor(HardwareSerial& serialBus);
-    
+
     void begin();
-    
-    // This MUST be called continuously in your main loop
+
     void update(); 
-    
+
     GPSData readData();
 };

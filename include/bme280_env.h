@@ -4,7 +4,7 @@
 #include <Adafruit_BME280.h>
 
 // A clean struct to pass the data back to your main loop
-struct EnvironmentData {
+struct AirData {
     float tempC;        // °C
     float tempF;        // °F
     float humidity;     // %
@@ -20,7 +20,7 @@ private:
 public:
     // Constructor uses Dependency Injection for the I2C bus
     BME280Sensor(SPIClass& spiBus, uint8_t csPin);
-    
+
     bool begin();
-    EnvironmentData readData();
+    AirData readData();
 };

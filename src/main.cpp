@@ -8,7 +8,9 @@
 #include "ota.h"
 #include "webserver.h"
 
+#include "bh1750_light.h"
 #include "bme280_env.h"
+#include "mpu6050_imu.h"
 #include "neo6m_gps.h"
 
 /** Available Left Pins */
@@ -56,6 +58,13 @@
 static bool led_state = false;
 #define RGB_LED_PIN 38
 
+// TWO WIRE
+TwoWire I2C_Bus = TwoWire(0);
+// Inject the shared bus into both sensor objects
+MPU6050Sensor IMU(I2C_Bus, 0x68);
+BH1750Sensor luxSensor(I2C_Bus, 0x23);
+// DS3231Sensor RTC(I2C_Bus);
+
 // SPI
 // Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
 SPIClass SPI_Bus = SPIClass(FSPI);
@@ -83,6 +92,18 @@ void setup() {
     setup_ota();
     // 5. Pull time from NTP server
     setup_ntp();
+
+    // TWO WIRE (I2C)
+    // Initialize the hardware pins once
+    I2C_Bus.begin(I2C_SCA, I2C_SCL); // SDA, SCL pins
+    IMU.begin();
+    luxSensor.begin();
+    // myRTC.begin();
+    // // Example: If NTP syncs and the RTC is behind/lost power, update it.
+    // // if (myRTC.readData().lostPower) {
+    // //     myRTC.adjustTime(ntp_timestamp);
+    // // }
+    // I2C_Bus.setClock(100000); // Force standard 100kHz clock
 
     // SPI
     // Initialize SPI pins: SCK, MISO, MOSI, CS (CS is handled by the SD library)
@@ -121,10 +142,10 @@ void loop() {
         JsonObject active = doc["active_sensors"].to<JsonObject>();
         active["ds18b20"] = false;
         active["soil"] = false;
-        active["bme280"] = true;
-        active["bh1750"] = false;
+        active["bme280"] = false;
+        active["bh1750"] = true;
         active["gps"] = true;
-        active["imu"] = false;
+        active["imu"] = true;
 
         /** RGB LED SECTION */
         led_state = !led_state;
@@ -136,30 +157,71 @@ void loop() {
         doc["timestamp"] = tstmp.c_str();
         doc["uptime"] = last_millis / 1000;
 
+        /** Lux (BH1750) */
+        LuxData luxDat = luxSensor.readData();
+        if (luxDat.valid) {
+            debug_printf( "Lux: %.1f lux\n", luxDat.lux);
+        }
+
+        // Add Lux to Json
+        JsonObject lux = doc["lux"].to<JsonObject>();
+        lux["lux"] = luxDat.valid ? luxDat.lux : -1;
+
+        // /** IMU Orientation (MPU6050) */
+        // IMUData imuDat = IMU.readData();
+        // if (imuDat.valid) {
+        //     debug_printf(
+        //         "IMU Accelerometer: %.1f (X), %.1f (Y), %.1f (Z)\n",
+        //         imuDat.accelX,
+        //         imuDat.accelY,
+        //         imuDat.accelZ
+        //     );
+        //     debug_printf(
+        //         "IMU Gyroscope: %.1f (X), %.1f (Y), %.1f (Z)\n",
+        //         imuDat.gyroX,
+        //         imuDat.gyroY,
+        //         imuDat.gyroZ
+        //     );
+        //     debug_printf(
+        //         "IMU Temperature: %.1f°F\n",
+        //         imuDat.temperatureF
+        //     );
+        // }
+
+        // // Add IMU data to JSON
+        // JsonObject imu = doc["imu"].to<JsonObject>();
+        // imu["accelX"] = imuDat.valid ? imuDat.accelX : -1;
+        // imu["accelY"] = imuDat.valid ? imuDat.accelY : -1;
+        // imu["accelZ"] = imuDat.valid ? imuDat.accelZ : -1;
+        // imu["gyroX"] = imuDat.valid ? imuDat.gyroX : -1;
+        // imu["gyroY"] = imuDat.valid ? imuDat.gyroY : -1;
+        // imu["gyroZ"] = imuDat.valid ? imuDat.gyroZ : -1;
+        // imu["tempF"] = imuDat.valid ? imuDat.temperatureF : -1;
+
         /** Air Temperature & Humidity (BME280) */
-        EnvironmentData envDat = AirEnv.readData();
-        if (envDat.valid) {
+        AirData airDat = AirEnv.readData();
+        if (airDat.valid) {
             debug_printf(
                 "Air Temperature: %.1f°C / %.1f°F\n",
-                envDat.tempC,
-                envDat.tempF
+                airDat.tempC,
+                airDat.tempF
             );
             debug_printf(
                 "Air Humidity: %.0f %%\n",
-                envDat.humidity
+                airDat.humidity
             );
             debug_printf(
                 "Air Pressure: %.1f hPa\n",
-                envDat.pressure
+                airDat.pressure
             );
         }
 
-        // Environment (BME280)
-        JsonObject env = doc["env"].to<JsonObject>();
-        env["airTempF"] = envDat.valid ? envDat.tempF : -1;
-        env["airTempC"] = envDat.valid ? envDat.tempC : -1;
-        env["airHumidity"] = envDat.valid ? envDat.humidity : -1;
-        env["airPress"] = envDat.valid ? envDat.pressure : -1;
+        // Add Air Data to JSON
+        JsonObject air = doc["air"].to<JsonObject>();
+        air["airTempF"] = airDat.valid ? airDat.tempF : -1;
+        air["airTempC"] = airDat.valid ? airDat.tempC : -1;
+        air["airHumidity"] = airDat.valid ? airDat.humidity : -1;
+        air["airPress"] = airDat.valid ? airDat.pressure : -1;
 
         /** GPS SECTION */
         GPSData loc = myGPS.readData(); // READ THE DATA: Only pull the data out during your timed heartbeat.
@@ -175,7 +237,7 @@ void loop() {
             debug_printf("Waiting for GPS fix... Satellites in view: %d\n", loc.satellites);
         }
 
-        // GPS Data
+        // Add GPS Data to JSON
         JsonObject gps = doc["gps"].to<JsonObject>();
 
         char tstmp_buffer[20] = "";
@@ -187,7 +249,6 @@ void loop() {
         gps["altitude"] = loc.altitudeMeters;
         gps["speed"] = loc.speedMPH;
         gps["satellites"] = loc.satellites;
-        // gps["gps_timestamp"] = TODO;
 
         doc["logs"] = log_buffer;
 

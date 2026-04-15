@@ -189,6 +189,7 @@ UART is an asynchronous, point-to-point hardware protocol. It uses two wires: Tr
 * **Cons:** Point-to-point only (one device per serial port). Baud rate mismatches cause complete data corruption.
 * **Hardware Req:** TX goes to RX. RX goes to TX. Ensure common ground.
 * **Suggested Pins:** ESP32-S3 has 3 hardware UARTs. UART0 is tied to the USB serial monitor. Map UART1 or UART2 to any open standard GPIOs (e.g., GPIO 17 for RX, GPIO 18 for TX).
+* **IMPORTANT NOTE:** The NEO-6M GPS Module requires 5V on VCC, not 3.3V.
 
 > `[Placeholder: Image of UART logic analyzer trace showing Start Bit, 8 Data Bits, and Stop Bit]`
 
