@@ -8,6 +8,7 @@
 #include "ota.h"
 #include "webserver.h"
 
+#include "bme280_env.h"
 #include "neo6m_gps.h"
 
 /** Available Left Pins */
@@ -28,7 +29,7 @@
 #define STRP46 46 // Pull Down Strapping Pin
 #define I2C_SCA 9
 #define I2C_SCL 10
-#define SPI_CS 11
+#define BME_CS 11
 #define SPI_SCK 12
 #define SPI_MOSI 13
 #define SPI_MISO 14
@@ -55,6 +56,13 @@
 static bool led_state = false;
 #define RGB_LED_PIN 38
 
+// SPI
+// Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
+SPIClass SPI_Bus = SPIClass(FSPI);
+BME280Sensor AirEnv = BME280Sensor(SPI_Bus, BME_CS);
+// // Inject the bus and assign the CS pin (e.g., GPIO 10)
+// SDManager mySD(SPI_Bus, 10);
+
 // UART
 // Instantiate Serial1 and inject it into the sensor class
 HardwareSerial GPS_Serial(1);
@@ -76,6 +84,14 @@ void setup() {
     // 5. Pull time from NTP server
     setup_ntp();
 
+    // SPI
+    // Initialize SPI pins: SCK, MISO, MOSI, CS (CS is handled by the SD library)
+    SPI_Bus.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
+    AirEnv.begin();
+    // mySD.begin();
+    // mySD.appendLog("/sensor_log.csv", "Timestamp,Temp,Moisture");
+
+    // UART
     myGPS.begin();
 }
 
@@ -83,7 +99,7 @@ void setup() {
 void loop() {
     // Process incoming OTA requests
     ArduinoOTA.handle();
-    
+
     // Purge abandoned WebSocket connections from page refreshes
     ws.cleanupClients();
 
@@ -101,15 +117,11 @@ void loop() {
         debug_printf("Current Time: %s\n", tstmp.c_str());
         last_millis = millis();
 
-        // JSONify System Metadata
-        doc["timestamp"] = tstmp.c_str();
-        doc["uptime"] = last_millis / 1000;
-
         // Add connected hardware flags
         JsonObject active = doc["active_sensors"].to<JsonObject>();
         active["ds18b20"] = false;
         active["soil"] = false;
-        active["bme280"] = false;
+        active["bme280"] = true;
         active["bh1750"] = false;
         active["gps"] = true;
         active["imu"] = false;
@@ -119,7 +131,36 @@ void loop() {
         neopixelWrite(RGB_LED_PIN, led_state ? 1 : 0, 0, 0);
 
         // debug_println("Heartbeat: System Nominal");
-        
+
+        // JSONify System Metadata
+        doc["timestamp"] = tstmp.c_str();
+        doc["uptime"] = last_millis / 1000;
+
+        /** Air Temperature & Humidity (BME280) */
+        EnvironmentData envDat = AirEnv.readData();
+        if (envDat.valid) {
+            debug_printf(
+                "Air Temperature: %.1f°C / %.1f°F\n",
+                envDat.tempC,
+                envDat.tempF
+            );
+            debug_printf(
+                "Air Humidity: %.0f %%\n",
+                envDat.humidity
+            );
+            debug_printf(
+                "Air Pressure: %.1f hPa\n",
+                envDat.pressure
+            );
+        }
+
+        // Environment (BME280)
+        JsonObject env = doc["env"].to<JsonObject>();
+        env["airTempF"] = envDat.valid ? envDat.tempF : -1;
+        env["airTempC"] = envDat.valid ? envDat.tempC : -1;
+        env["airHumidity"] = envDat.valid ? envDat.humidity : -1;
+        env["airPress"] = envDat.valid ? envDat.pressure : -1;
+
         /** GPS SECTION */
         GPSData loc = myGPS.readData(); // READ THE DATA: Only pull the data out during your timed heartbeat.
         if (loc.valid) {
