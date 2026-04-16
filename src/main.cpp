@@ -76,31 +76,40 @@ TwoWire I2C_Bus = TwoWire(0);
 SPIClass SPI_Bus = SPIClass(FSPI);
 #endif
 
-#if USE_GPS
-// UART
-// Instantiate Serial1 and inject it into the sensor class
-HardwareSerial GPS_Serial(1);
+#if USE_TEMP
+#include "ds18b20_temp.h"
+OneWire oneWireBus(ONE_WIRE_BUS_PIN);   // ONE WIRE
+// The index correlates to the sensor's unique hardcoded ROM ID, sorted lowest to highest.
+DS18B20Sensor soilTempSensor(oneWireBus, 0); 
+// DS18B20Sensor soilTempSensor2(oneWireBus, 1);
 #endif
 
 #if USE_LUX
 #include "bh1750_light.h"
 BH1750Sensor luxSensor(I2C_Bus, 0x23);
 #endif
+
 #if USE_AIR
 #include "bme280_env.h"
 BME280Sensor AirEnv = BME280Sensor(SPI_Bus, BME_CS);
 #endif
+
 #if USE_IMU
 #include "mpu6050_imu.h"
 MPU6050Sensor IMU(I2C_Bus, 0x68);
 #endif
+
 #if USE_GPS
 #include "neo6m_gps.h"
+HardwareSerial GPS_Serial(1);   // UART
 NEO6MSensor GPS(GPS_Serial);
 #endif
+
 #if USE_RTC // TODO
+#include "ds3231_rtc.h"
 DS3231Sensor RTC(I2C_Bus);
 #endif
+
 #if USE_SD // TODO
 // Inject the bus and assign the CS pin (e.g., GPIO 10)
 SDManager mySD(SPI_Bus, 10);
@@ -121,6 +130,12 @@ void setup() {
     setup_ota();
     // 5. Pull time from NTP server
     setup_ntp();
+
+    #if USE_TEMP
+    // ONE WIRE
+    soilTempSensor.begin();
+    // soilTempSensor2.begin();
+    #endif
 
     // UART
     #if USE_GPS
@@ -208,6 +223,35 @@ void loop() {
         // JSONify System Metadata
         doc["timestamp"] = tstmp.c_str();
         doc["uptime"] = last_millis / 1000;
+
+        /** Compost Temperature */
+        #if USE_TEMP
+        TempData soilTemp = soilTempSensor.readData();
+        if (soilTemp.valid) {
+            debug_printf(
+                "Soil Temperature: %.1f°C / %.1f°F\n",
+                soilTemp.tempC,
+                soilTemp.tempF
+            );
+        }
+        // TempData soilTemp2 = soilTempSensor2.readData();
+        // if (soilTemp2.valid) {
+        //     debug_printf(
+        //         "Soil Temperature: %.1f°C / %.1f°F\n",
+        //         soilTemp2.tempC,
+        //         soilTemp2.tempF
+        //     );
+        // }
+
+        // Add Soil Temperature to Json
+        #if !USE_MOIST
+        JsonObject soil = doc["soil"].to<JsonObject>();
+        #endif
+        soil["tempF"] = soilTemp.valid ? soilTemp.tempF : -1;
+        soil["tempC"] = soilTemp.valid ? soilTemp.tempC : -1;
+        // soil["tempF2"] = soilTemp2.valid ? soilTemp2.tempF : -1;
+        // soil["tempC2"] = soilTemp2.valid ? soilTemp2.tempC : -1;
+        #endif
 
         /** Lux (BH1750) */
         #if USE_LUX
