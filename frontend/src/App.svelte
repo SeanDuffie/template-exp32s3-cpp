@@ -20,33 +20,46 @@
     // -- Hardware Configuration Flags --
     // Toggle these to true/false based on what is physically connected
     let activeSensors = $state({
-        ds18b20: false,
-        soil: false,
-        bme280: false,
-        bh1750: false, // Set to true to see the card
-        gps: true,
-        imu: false     // Set to true to see the card
+        soilTemp: false, // DS18B20
+        soilMoist: false, // Analog Capacitive Soil Moisture Sensor
+        air: false, // BME280
+        lux: false, // BH1750
+        gps: false, // NEO-6M
+        imu: false // MPU6050
     });
 
     // -- Sensor Data --
-    let liveData = $state({
-        // probeTempF: "", // °F
-        // probeTempC: "", // °C
-        // soilMoisture: "",  // %
-        // soilMoistureRaw: "", // ADC
-        // airTempF: "", // °F
-        // airTempC: "", // °C
-        // humidity: "",  // %
-        // pressure: "",  // hPa
-        // lightLux: "",  // Lumen
-        gpsTime: "",  // Timestamp
-        gpsLat: "",
-        gpsLon: "",
-        gpsAlt: "",
-        gpsSpeed: "",
-        gpsSats: "",
-        // imuPitch: "",
-        // imuRoll: "",
+    let soilData = $state({
+        tempF: "", // °F
+        tempC: "", // °C
+        moisture: "",  // %
+        moistureADC: "", // ADC
+    })
+    let airData = $state({
+        tempF: "", // °F
+        tempC: "", // °C
+        humidity: "",  // %
+        pressure: "",  // hPa
+    });
+    let gpsData = $state({
+        time: "",  // GPS Timestamp
+        lat: "",
+        lon: "",
+        alt: "",
+        speed: "",
+        numSats: "",
+    });
+    let imuData = $state({
+        accelX: "",
+        accelY: "",
+        accelZ: "",
+        gyroX: "",
+        gyroY: "",
+        gyroZ: "",
+        tempF: "",
+    });
+    let lightData = $state({
+        lux: "",  // Lumen
     });
 
     // -- Filesystem Data --
@@ -137,6 +150,15 @@
     });
 
     onMount(() => {
+        // Detect system preference
+        if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
+            isDarkMode = false;
+        }
+
+        // Apply theme class
+        if (isDarkMode) document.body.classList.add('dark');
+        else document.body.classList.remove('dark');
+
         // Establish connection to ESP32
         const socket = new WebSocket(`ws://${window.location.hostname}/ws`);
 
@@ -145,57 +167,63 @@
                 const data = JSON.parse(event.data);
 
                 // Map JSON keys to your UI variables
-                sessionData.systemTime = data.timestamp;
-                sessionData.upsec = Number(data.uptime);
-                sessionData.uptime = new Date(sessionData.upsec * 1000).toISOString().slice(11, 19);
+                if (data.timestamp) sessionData.systemTime = data.timestamp;
+                if (data.uptime) {
+                    sessionData.upsec = Number(data.uptime);
+                    sessionData.uptime = new Date(sessionData.upsec * 1000).toISOString().slice(11, 19);
+                }
                 
-                // Update active sensor cards dynamically
-                if (data.active_sensors) {
-                    // activeSensors.ds18b20 = data.active.ds18b20;
-                    // activeSensors.soil = data.active.soil;
-                    // activeSensors.bme280 = data.active.bme280;
-                    // activeSensors.bh1750 = data.active.bh1750;
-                    // activeSensors.gps = data.active.gps;
-                    // activeSensors.imu = data.active.imu;
-                    activeSensors = data.active_sensors;
+                if (data.active) {
+                    activeSensors.soilTemp = data.active.soilTemp;
+                    activeSensors.soilMoist = data.active.soilMoist;
+                    activeSensors.air = data.active.air;
+                    activeSensors.lux = data.active.lux;
+                    activeSensors.gps = data.active.gps;
+                    activeSensors.imu = data.active.imu;
                 }
 
-                // if (activeSensors.ds18b20) {
-                //     liveData.probeTempF = data.bin.probeTempF.toFixed(2);
-                //     liveData.probeTempC = data.bin.probeTempC.toFixed(2);
-                // }
-
-                // if (activeSensors.soil) {
-                //     liveData.soilMoisture = data.bin.soilMoisture.toFixed(2);
-                //     liveData.soilMoistureRaw = data.bin.binMoistRaw;
-                // }
-
-                // if (activeSensors.bme280) {
-                //     liveData.airTempF = data.env.airTempF.toFixed(2);
-                //     liveData.airTempC = data.env.airTempC.toFixed(2);
-                //     liveData.humidity = data.env.airHumidity.toFixed(2);
-                //     liveData.pressure = data.env.airPress.toFixed(2);
-                // }
-
-                // if (activeSensors.bh1750) {
-                //     liveData.lightLux = data.env.lightLux;
-                // }
-
-                if (activeSensors.gps) {
-                    liveData.gpsTime = data.gps.time;
-                    liveData.gpsLat = data.gps.latitude;
-                    liveData.gpsLon = data.gps.longitude;
-                    liveData.gpsAlt = data.gps.altitude;
-                    liveData.gpsSpeed = data.gps.speed;
-                    liveData.gpsSats = data.gps.satellites;
+                // Note: You have no logic in main.cpp generating doc["soil"] yet.
+                // This prevents it from crashing until you add it.
+                if (activeSensors.soilTemp && data.soil) {
+                    soilData.tempF = data.soil.probeTempF?.toFixed(2) || "";
+                    soilData.tempC = data.soil.probeTempC?.toFixed(2) || "";
                 }
 
-                // if (activeSensors.imu) {
-                //     liveData.imuPitch = data.imu.pitch;
-                //     liveData.imuRoll = data.imu.roll;
-                // }
+                if (activeSensors.soilMoist && data.soil) {
+                    soilData.moisture = data.soil.soilMoisture?.toFixed(2) || "";
+                    soilData.moistureADC = data.soil.binMoistRaw || "";
+                }
+
+                if (activeSensors.air && data.air) {
+                    airData.tempF = data.air.airTempF?.toFixed(2) || "";
+                    airData.tempC = data.air.airTempC?.toFixed(2) || "";
+                    airData.humidity = data.air.airHumidity?.toFixed(2) || "";
+                    airData.pressure = data.air.airPress?.toFixed(2) || "";
+                }
+
+                if (activeSensors.lux && data.lux) {
+                    lightData.lux = data.lux.lux || "";
+                }
+
+                if (activeSensors.gps && data.gps) {
+                    gpsData.time = data.gps.time || "";
+                    gpsData.lat = data.gps.latitude || "";
+                    gpsData.lon = data.gps.longitude || "";
+                    gpsData.alt = data.gps.altitude || "";
+                    gpsData.speed = data.gps.speed || "";
+                    gpsData.numSats = data.gps.satellites || "";
+                }
+
+                if (activeSensors.imu && data.imu) {
+                    imuData.accelX = data.imu.accelX || "";
+                    imuData.accelY = data.imu.accelY || "";
+                    imuData.accelZ = data.imu.accelZ || "";
+                    imuData.gyroX = data.imu.gyroX || "";
+                    imuData.gyroY = data.imu.gyroY || "";
+                    imuData.gyroZ = data.imu.gyroZ || "";
+                    imuData.tempF = data.imu.tempF || "";
+                }
                 
-                // Append logs to terminal
                 if (data.logs) {
                     sessionData.terminalLogs += data.logs;
 
@@ -209,7 +237,7 @@
             } catch (err) {
                 console.error("Failed to parse sensor JSON", err);
             }
-        }
+        };
         return () => socket.close();
     });
 
@@ -239,62 +267,69 @@
 
         {#if currentPage === 'home'}
             <div class="dashboard grid-container">
-                <!-- DS18B20 -->
-                <!-- {#if activeSensors.ds18b20}
+                <!-- Soil Temperature (DS18B20) -->
+                {#if activeSensors.soilTemp}
                 <section class="card">
                     <h2>Temperature Probe (DS18B20)</h2>
-                    <div class="reading"><span class="label">Temperature</span><span class="value">{liveData.probeTempF}°F</span></div>
-                </section>
-                {/if} -->
-
-                <!-- Soil Moisture -->
-                <!-- {#if activeSensors.soil}
-                <section class="card">
-                    <h2>Capacitive Soil Moisture Sensor (Analog)</h2>
-                    <div class="reading"><span class="label">Moisture Level</span><span class="value">{liveData.soilMoisture}%</span></div>
-                    <div class="reading"><span class="label">Raw ADC</span><span class="value">{liveData.soilMoistureRaw}</span></div>
-                </section>
-                {/if} -->
-
-                <!-- BME280 -->
-                <!-- {#if activeSensors.bme280}
-                <section class="card">
-                    <h2>Air Quality Sensor (BME280)</h2>
-                    <div class="reading"><span class="label">Air Temp</span><span class="value">{liveData.airTempF}°F</span></div>
-                    <div class="reading"><span class="label">Humidity</span><span class="value">{liveData.humidity}%</span></div>
-                    <div class="reading"><span class="label">Pressure</span><span class="value">{liveData.pressure} hPa</span></div>
-                </section>
-                {/if} -->
-
-                <!-- BH1750 -->
-                <!-- {#if activeSensors.bh1750}
-                <section class="card">
-                    <h2>Lux Sensor (BH1750)</h2>
-                    <div class="reading"><span class="label">Intensity</span><span class="value">{liveData.lightLux} Lux</span></div>
-                </section>
-                {/if} -->
-
-                <!-- NEO-6M GPS -->
-                {#if activeSensors.gps}
-                <section class="card">
-                    <h2>GPS Location Module (NEO-6M)</h2>
-                    <div class="reading"><span class="label">GPS Time</span><span class="value">{liveData.gpsTime}</span></div>
-                    <div class="reading"><span class="label">Latitude</span><span class="value">{liveData.gpsLat}</span></div>
-                    <div class="reading"><span class="label">Longitude</span><span class="value">{liveData.gpsLon}</span></div>
-                    <div class="reading"><span class="label">Altitude</span><span class="value">{liveData.gpsAlt}</span></div>
-                    <div class="reading"><span class="label">Speed</span><span class="value">{liveData.gpsSpeed}</span></div>
-                    <div class="reading"><span class="label">Satellite Count</span><span class="value">{liveData.gpsSats}</span></div>
+                    <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
+                    <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
                 </section>
                 {/if}
 
-                <!-- MPU6050 -->
-                <!-- {#if activeSensors.imu}
+                <!-- Soil Moisture (Capacitive ADC) -->
+                {#if activeSensors.soilMoist}
+                <section class="card">
+                    <h2>Capacitive Soil Moisture Sensor (Analog)</h2>
+                    <div class="reading"><span class="label">Moisture Level</span><span class="value">{soilData.moisture}%</span></div>
+                    <div class="reading"><span class="label">Raw ADC</span><span class="value">{soilData.moistureADC}</span></div>
+                </section>
+                {/if}
+
+                <!-- Air (BME280) -->
+                {#if activeSensors.air}
+                <section class="card">
+                    <h2>Air Quality Sensor (BME280)</h2>
+                    <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempF}°F</span></div>
+                    <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempC}°C</span></div>
+                    <div class="reading"><span class="label">Humidity</span><span class="value">{airData.humidity}%</span></div>
+                    <div class="reading"><span class="label">Pressure</span><span class="value">{airData.pressure} hPa</span></div>
+                </section>
+                {/if}
+
+                <!-- Lux (BH1750) -->
+                {#if activeSensors.lux}
+                <section class="card">
+                    <h2>Lux Sensor (BH1750)</h2>
+                    <div class="reading"><span class="label">Light Intensity</span><span class="value">{lightData.lux} Lux</span></div>
+                </section>
+                {/if}
+
+                <!-- GPS (NEO-6M) -->
+                {#if activeSensors.gps}
+                <section class="card">
+                    <h2>GPS Location Module (NEO-6M)</h2>
+                    <div class="reading"><span class="label">GPS Time</span><span class="value">{gpsData.time}</span></div>
+                    <div class="reading"><span class="label">Latitude</span><span class="value">{gpsData.lat}</span></div>
+                    <div class="reading"><span class="label">Longitude</span><span class="value">{gpsData.lon}</span></div>
+                    <div class="reading"><span class="label">Altitude</span><span class="value">{gpsData.alt}</span></div>
+                    <div class="reading"><span class="label">Speed</span><span class="value">{gpsData.speed}</span></div>
+                    <div class="reading"><span class="label">Satellite Count</span><span class="value">{gpsData.numSats}</span></div>
+                </section>
+                {/if}
+
+                <!-- IMU (MPU6050) -->
+                {#if activeSensors.imu}
                 <section class="card">
                     <h2>IMU Orientation Sensor (MPU6050)</h2>
-                    <div class="reading"><span class="label">Pitch</span><span class="value">{liveData.imuPitch}°</span></div>
-                    <div class="reading"><span class="label">Roll</span><span class="value">{liveData.imuRoll}°</span></div>
+                    <div class="reading"><span class="label">Accelerometer X</span><span class="value">{imuData.accelX}°</span></div>
+                    <div class="reading"><span class="label">Accelerometer Y</span><span class="value">{imuData.accelY}°</span></div>
+                    <div class="reading"><span class="label">Accelerometer Z</span><span class="value">{imuData.accelZ}°</span></div>
+                    <div class="reading"><span class="label">Gyroscope X</span><span class="value">{imuData.gyroX}°</span></div>
+                    <div class="reading"><span class="label">Gyroscope Y</span><span class="value">{imuData.gyroY}°</span></div>
+                    <div class="reading"><span class="label">Gyroscope Z</span><span class="value">{imuData.gyroZ}°</span></div>
+                    <div class="reading"><span class="label">IMU Temperature</span><span class="value">{imuData.tempF}°F</span></div>
                 </section>
-                {/if} -->
+                {/if}
                 
                 <!-- <section class="card full-width admin-panel">
                     <h2>System Administration</h2>
@@ -365,10 +400,12 @@
 <style>
     /* CSS Variables for Light/Dark Mode */
     :global(:root) {
-        --bg-color: #f4f4f5;
-        --text-color: #18181b;
-        --card-bg: #ffffff;
-        --border-color: #e4e4e7;
+        --bg-color: #e2e8f0; /* Darker slate-grey for the background */
+        --text-color: #0f172a; /* Deep slate for text */
+        --card-bg: #ffffff; /* Pure white for cards to pop */
+        --border-color: #cbd5e1;
+        --title-color: #0f172a; /* Distinct color for titles */
+        --heading-color: #1d4ed8; /* Distinct blue for headings */
         --nav-bg: #2563eb;
         --nav-text: #ffffff;
         --term-bg: #1e1e1e;
@@ -376,14 +413,16 @@
     }
 
     :global(body.dark) {
-        --bg-color: #121212;
-        --text-color: #e0e0e0;
-        --card-bg: #1e1e1e;
-        --border-color: #333333;
-        --nav-bg: #1f2937;
-        --nav-text: #e0e0e0;
-        --term-bg: #000000;
-        --term-text: #4ade80;
+        --bg-color: #0f172a; /* Dark Slate */
+        --text-color: #f8fafc; /* Off-White/Ice */
+        --card-bg: #1e293b; /* Elevated Slate */
+        --border-color: #334155; /* Mid Slate */
+        --title-color: #e2e8f0; /* Distinct color for titles */
+        --heading-color: #1d4ed8; /* Distinct blue for headings */
+        --nav-bg: #1e40af; /* Deep Blue */
+        --nav-text: #f8fafc;
+        --term-bg: #020617; /* Near Black */
+        --term-text: #4ade80; /* Phosphor Green */
     }
 
     :global(body) {
@@ -449,10 +488,15 @@
         box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
+    h1 {
+        color: var(--title-color); /* Apply the title color */
+    }
+
     h2 {
         margin-top: 0;
         font-size: 1.2rem;
-        border-bottom: 1px solid var(--border-color);
+        color: var(--heading-color); /* Apply the heading color */
+        border-bottom: 2px solid var(--border-color); /* Thicker border */
         padding-bottom: 10px;
     }
 
