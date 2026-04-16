@@ -76,6 +76,11 @@ TwoWire I2C_Bus = TwoWire(0);
 SPIClass SPI_Bus = SPIClass(FSPI);
 #endif
 
+#if USE_MOIST
+#include "analog_soil_moisture.h"
+AnalogMoistureSensor SoilMoistureSensor(COMPOST_MOISTURE_PIN, 2700, 800);  // Capacitive ADC
+#endif
+
 #if USE_TEMP
 #include "ds18b20_temp.h"
 OneWire oneWireBus(ONE_WIRE_BUS_PIN);   // ONE WIRE
@@ -131,20 +136,21 @@ void setup() {
     // 5. Pull time from NTP server
     setup_ntp();
 
+    #if USE_MOIST
+    soilMoistureSensor.begin();    // Capacitive ADC
+    #endif
+
     #if USE_TEMP
-    // ONE WIRE
-    soilTempSensor.begin();
+    soilTempSensor.begin();     // ONE WIRE
     // soilTempSensor2.begin();
     #endif
 
-    // UART
     #if USE_GPS
-    GPS.begin();
+    GPS.begin();        // UART
     #endif
 
     #if USE_I2C
-    // TWO WIRE (I2C)
-    I2C_Bus.begin(I2C_SCA, I2C_SCL); // SDA, SCL pins
+    I2C_Bus.begin(I2C_SCA, I2C_SCL); // TWO WIRE (I2C - SDA, SCL)
     #endif
 
     #if USE_IMU
@@ -196,7 +202,7 @@ void loop() {
     // Blink LED and send heartbeat every 1000ms without blocking OTA
     static uint32_t last_millis = 0;
     if (millis() - last_millis >= 1000) {
-        // debug_println("-----------------------------------");
+        debug_println("-----------------------------------");
 
         // Create JSON Document (Size 1024 to be safe)
         JsonDocument doc;
@@ -223,6 +229,23 @@ void loop() {
         // JSONify System Metadata
         doc["timestamp"] = tstmp.c_str();
         doc["uptime"] = last_millis / 1000;
+
+        /** Compost Moisture */
+        #if USE_MOIST
+        MoistureData soilMoisture = soilMoistureSensor.readData();
+        if (soilMoisture.valid) {
+            debug_printf(
+                "Soil Moisture: %.0f %% (%d)\n",
+                soilMoisture.percentage,
+                soilMoisture.rawValue
+            );
+        }
+
+        // Add Soil Temperature to Json
+        JsonObject soil = doc["soil"].to<JsonObject>();
+        soil["moisture"] = soilMoisture.valid ? soilMoisture.percentage : -1;
+        soil["moistureADC"] = soilMoisture.valid ? soilMoisture.rawValue : -1;
+        #endif
 
         /** Compost Temperature */
         #if USE_TEMP
