@@ -32,3 +32,51 @@ void setup_webserver() {
     httpServer.begin();
     debug_println("Web server started.");
 }
+
+void setup_endpoints() {
+    // 1. List Files Endpoint
+    server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+        JsonDocument doc;
+        JsonArray files = doc["files"].to<JsonArray>();
+
+        // Swap 'LittleFS' for 'SD' when your hardware changes
+        File root = LittleFS.open("/");
+        if (!root || !root.isDirectory()) {
+            request->send(500, "application/json", "{\"error\":\"Failed to open directory\"}");
+            return;
+        }
+
+        File file = root.openNextFile();
+        while (file) {
+            JsonObject obj = files.add<JsonObject>();
+            // LittleFS includes the leading slash in the name, strip it for cleaner UI
+            String fileName = String(file.name());
+            if (fileName.startsWith("/")) fileName = fileName.substring(1);
+            
+            obj["name"] = fileName;
+            obj["size"] = file.size();
+            file = root.openNextFile();
+        }
+        
+        String response;
+        serializeJson(doc, response);
+        request->send(200, "application/json", response);
+    });
+
+    // 2. File Download Endpoint
+    server.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("file")) {
+            String filename = "/" + request->getParam("file")->value();
+            
+            // Swap 'LittleFS' for 'SD' here as well
+            if (LittleFS.exists(filename)) {
+                // The 'true' boolean forces the browser to download instead of displaying it inline
+                request->send(LittleFS, filename, "application/octet-stream", true); 
+            } else {
+                request->send(404, "text/plain", "File Not Found");
+            }
+        } else {
+            request->send(400, "text/plain", "Bad Request: Missing file parameter");
+        }
+    });
+}
