@@ -1,5 +1,5 @@
-#include "neo6m_gps.h"
-#include "debug.h"
+#include "sensors/neo6m_gps.h"
+#include "core/debug.h"
 
 #define U1_RX_PIN 17
 #define U1_TX_PIN 18

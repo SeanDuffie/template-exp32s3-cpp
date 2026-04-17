@@ -1,5 +1,5 @@
-#include "sdcard.h"
-#include "debug.h"
+#include "core/sdcard.h"
+#include "core/debug.h"
 
 SDManager::SDManager(SPIClass& spiBus, uint8_t csPin) 
     : _spi(spiBus), _csPin(csPin), _isMounted(false) {}

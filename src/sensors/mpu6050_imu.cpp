@@ -1,5 +1,5 @@
-#include "mpu6050_imu.h"
-#include "debug.h"
+#include "sensors/mpu6050_imu.h"
+#include "core/debug.h"
 
 MPU6050Sensor::MPU6050Sensor(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}
@@ -9,6 +9,12 @@ bool MPU6050Sensor::begin() {
         debug_printf("MPU6050 initialization failed at address 0x%02X.\n", _address);
         return false;
     }
+
+    // // Write 0x00 to PWR_MGMT_1 (Register 0x6B) to wake the sensor
+    // _wire.beginTransmission(_address);
+    // _wire.write(0x6B);
+    // _wire.write(0x00);
+    // _wire.endTransmission();
 
     // Standard configuration for smooth, general-purpose movement tracking
     _mpu.setAccelerometerRange(MPU6050_RANGE_8_G);

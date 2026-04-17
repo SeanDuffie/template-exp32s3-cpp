@@ -1,5 +1,5 @@
-#include "bme280_env.h"
-#include "debug.h"
+#include "sensors/bme280_env.h"
+#include "core/debug.h"
 
 BME280Sensor::BME280Sensor(SPIClass& spiBus, uint8_t csPin) 
     : _bme(csPin, &spiBus), _csPin(csPin) {}

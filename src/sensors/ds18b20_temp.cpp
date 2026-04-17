@@ -1,5 +1,5 @@
-#include "ds18B20_temp.h"
-#include "debug.h"
+#include "sensors/ds18B20_temp.h"
+#include "core/debug.h"
 
 DS18B20Sensor::DS18B20Sensor(OneWire& oneWireBus, uint8_t sensorIndex) 
     : _sensors(&oneWireBus), _index(sensorIndex) {}

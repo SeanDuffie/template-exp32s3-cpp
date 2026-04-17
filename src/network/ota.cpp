@@ -1,8 +1,8 @@
 /**
  * Handles both the push (ArduinoOTA) and pull (HTTPUpdate) firmware routines.
  */
-#include "ota.h"
-#include "debug.h"
+#include "network/ota.h"
+#include "core/debug.h"
 
 void setup_ota() {
     // Port defaults to 3232

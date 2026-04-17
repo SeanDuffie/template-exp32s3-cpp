@@ -3,9 +3,9 @@
  */
 #include <time.h>
 #include <map>
-#include "network.h"
-#include "webserver.h"
-#include "debug.h"
+#include "network/network.h"
+#include "network/webserver.h"
+#include "core/debug.h"
 
 // Define a temporary DNS server for the captive portal
 DNSServer dns;

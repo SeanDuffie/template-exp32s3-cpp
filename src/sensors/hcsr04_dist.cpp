@@ -1,5 +1,5 @@
-#include "hcsr04_dist.h"
-#include "debug.h"
+#include "sensors/hcsr04_dist.h"
+#include "core/debug.h"
 
 HCSR04Sensor::HCSR04Sensor(uint8_t trigPin, uint8_t echoPin, unsigned long timeoutUs) 
     : _trigPin(trigPin), _echoPin(echoPin), _timeoutUs(timeoutUs) {}

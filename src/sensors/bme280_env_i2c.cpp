@@ -1,5 +1,5 @@
-#include "bme280_env_i2c.h"
-#include "debug.h"
+#include "sensors/bme280_env_i2c.h"
+#include "core/debug.h"
 
 BME280SensorI2C::BME280SensorI2C(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}

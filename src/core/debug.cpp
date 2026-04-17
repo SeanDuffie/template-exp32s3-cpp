@@ -1,7 +1,7 @@
 /**
  * Handles all serial, telnet, and websocket printing.
  */
-#include "debug.h"
+#include "core/debug.h"
 
 // Define variables
 AsyncWebSocket ws("/ws");
