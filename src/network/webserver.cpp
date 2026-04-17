@@ -1,8 +1,8 @@
 /**
  * Handles static file serving, API routes, and LittleFS.
  */
-#include "webserver.h"
-#include "debug.h" // Gives access to 'ws' and 'update_requested'
+#include "network/webserver.h"
+#include "core/debug.h" // Gives access to 'ws' and 'update_requested'
 
 AsyncWebServer httpServer(80);
 
