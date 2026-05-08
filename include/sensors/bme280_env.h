@@ -1,5 +1,6 @@
 #pragma once
-#include <SPI.h>
+// #include <SPI.h>
+#include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
@@ -15,12 +16,14 @@ struct AirData {
 class BME280Sensor {
 private:
     Adafruit_BME280 _bme;
-    uint8_t _csPin;
+    // uint8_t _csPin;
+    TwoWire& _wire;
+    uint8_t _address;
 
 public:
-    // Constructor uses Dependency Injection for the I2C bus
-    BME280Sensor(SPIClass& spiBus, uint8_t csPin);
-
+    // Constructor uses Dependency Injection
+    // BME280Sensor(SPIClass& spiBus, uint8_t csPin);
+    BME280Sensor(TwoWire& wireBus, uint8_t address = 0x76);
     bool begin();
     AirData readData();
 };
