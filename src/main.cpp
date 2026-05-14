@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#include "debug.h"
+#include "core/StorageManager.h"
+#include "core/debug.h"
+#include "core/datalogger.h"
 
-#include "network.h"
-#include "ota.h"
-#include "webserver.h"
+#include "network/network.h"
+#include "network/ota.h"
+#include "network/webserver.h"
 
 /** Available Left Pins */
 // #define GND 1
@@ -25,7 +27,7 @@
 #define STRP46 46 // Pull Down Strapping Pin
 #define I2C_SCA 9
 #define I2C_SCL 10
-#define BME_CS 11
+#define SD_CS 11
 #define SPI_SCK 12
 #define SPI_MOSI 13
 #define SPI_MISO 14
@@ -56,10 +58,9 @@ static bool led_state = false;
 #define USE_MOIST false
 #define USE_LUX true
 #define USE_AIR false
-#define USE_IMU true
+#define USE_IMU false
 #define USE_GPS false
 #define USE_RTC false
-#define USE_SD false
 
 #if USE_LUX || USE_IMU
 #define USE_I2C true
@@ -68,8 +69,7 @@ static bool led_state = false;
 TwoWire I2C_Bus = TwoWire(0);
 #endif
 
-#if USE_AIR || USE_SD
-#define USE_SPI true
+#if USE_AIR
 // SPI
 // Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
 #include <SPI.h>
@@ -115,15 +115,26 @@ NEO6MSensor GPS(GPS_Serial);
 DS3231Sensor RTC(I2C_Bus);
 #endif
 
-#if USE_SD // TODO
-// Inject the bus and assign the CS pin (e.g., GPIO 10)
-SDManager mySD(SPI_Bus, 10);
-#endif
+uint32_t last_sd_check = 0;
+const uint32_t SD_CHECK_INTERVAL = 15000; // Check every 15 seconds
+
+Datalogger logger(1000*60*15); // 15 minute logging interval
+unsigned long start_time;
 
 void setup() {
     Serial.begin(115200);
-    // Wait for native USB CDC connection
+
+    // Wait for native USB CDC connection. Comment this out for faster boot.
     while (!Serial && millis() < 5000) { delay(10); }
+
+    // 1. Initialize Storage First
+    if (!FileSystem.begin(SD_CS, SPI_SCK, SPI_MISO, SPI_MOSI)) {
+        while (1) {  // Halt execution, web server cannot run
+            Serial.println("FATAL: LittleFS failed to mount. System halted.");
+            sleep(1); // Sleep to reduce CPU usage while halted
+            yield(); 
+        }
+    }
 
     // 1. Establish Wi-Fi (Blocking)
     setup_wifi_manager();
@@ -131,9 +142,11 @@ void setup() {
     setup_debug();
     // 3. Initializes LittleFS and endpoints
     setup_webserver();
-    // 4. Initialize OTA Server
+    // 4. Initialize Webserver Endpoints
+    setup_endpoints();
+    // 5. Initialize OTA Server
     setup_ota();
-    // 5. Pull time from NTP server
+    // 6. Pull time from NTP server
     setup_ntp();
 
     #if USE_MOIST
@@ -171,24 +184,21 @@ void setup() {
 
     // I2C_Bus.setClock(100000); // Force standard 100kHz clock
 
-    #if USE_SPI
-    // SPI
-    // Initialize SPI pins: SCK, MISO, MOSI, CS (CS is handled by the SD library)
-    SPI_Bus.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
-    #endif
-
     #if USE_AIR
     AirEnv.begin();
     #endif
 
-    #if USE_SD
-    SD.begin();
-    SD.appendLog("/sensor_log.csv", "Timestamp,Temp,Moisture");
-    #endif
+    // 7. Initialize datalogger, uses either the SD card or LittleFS.
+    bool use_sd = false;
+    start_time = millis();
+
+    logger.begin("/sensor_log.csv", "Timestamp,Uptime_ms", use_sd);
 }
 
 
 void loop() {
+    sDataRow dataRow;
+
     // Process incoming OTA requests
     ArduinoOTA.handle();
 
@@ -208,6 +218,8 @@ void loop() {
         JsonDocument doc;
 
         String tstmp = get_timestamp();
+        dataRow.timestamp = tstmp;
+        dataRow.uptime = millis() - start_time;
         debug_printf("Current Time: %s\n", tstmp.c_str());
         last_millis = millis();
 
@@ -386,6 +398,12 @@ void loop() {
         log_buffer = "";
 
         handle_telnet();
+    }
+
+    // Periodically check if the SD card was reinserted (only runs if currently in fallback mode)
+    if (millis() - last_sd_check >= SD_CHECK_INTERVAL) {
+        FileSystem.checkSDConnection();
+        last_sd_check = millis();
     }
 
     /** OTA SECTION */
