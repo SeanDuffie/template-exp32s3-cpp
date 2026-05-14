@@ -21,6 +21,7 @@ public:
     StorageManager();
     bool begin(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin);
     bool appendLog(const char* filepath, const char* data);
+    bool deleteFile(const char* filepath, String driveName = "littlefs");
     fs::FS* getDrive(String driveName);
     size_t getTotalBytes(String driveName);
     size_t getUsedBytes(String driveName);

@@ -8,7 +8,8 @@ StorageManager::StorageManager() : _activeFS(nullptr), _state(STORAGE_FALLBACK_L
 bool StorageManager::begin(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8_t mosiPin) {
     this->_csPin = csPin;  // Store CS pin for later use in SD reinitialization
 
-    bool littleFsMounted = LittleFS.begin(true);
+    // bool littleFsMounted = LittleFS.begin(true);
+    bool littleFsMounted = LittleFS.begin();
     if (!littleFsMounted) {
         debug_println("StorageManager: CRITICAL ERROR - LittleFS failed to mount.");
         // The web server cannot function without LittleFS.
@@ -18,7 +19,7 @@ bool StorageManager::begin(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8
     SPI.begin(sckPin, misoPin, mosiPin, _csPin);
 
     // Always attempt to mount SD, regardless of LittleFS state
-    if (SD.begin(_csPin, SPI)) { // Replace 5 with your actual CS Pin
+    if (SD.begin(_csPin, SPI, 4000000)) { // Replace 5 with your actual CS Pin
         _activeFS = &SD;
         _state = STORAGE_SD_ACTIVE;
         debug_println("StorageManager: SD card active.");
@@ -57,9 +58,33 @@ bool StorageManager::appendLog(const char* filepath, const char* data) {
     return true;
 }
 
+bool StorageManager::deleteFile(const char* filepath, String driveName) {
+    fs::FS* targetFS = getDrive(driveName);
+
+    if (targetFS == nullptr) {
+        debug_printf("StorageManager: Failed to delete file '%s' on drive '%s' - drive unavailable.\n", filepath, driveName.c_str());
+        return false;
+    }
+
+    bool result = targetFS->remove(filepath);
+    if (result) {
+        if (targetFS->exists(filepath)) {
+            debug_printf("StorageManager: Failed to delete file '%s' on drive '%s' - file still exists after deletion attempt.\n", filepath, driveName.c_str());
+            return false;
+        } else {
+            debug_printf("StorageManager: Successfully deleted file '%s' from drive '%s'.\n", filepath, driveName.c_str());
+        }
+    } else {
+        debug_printf("StorageManager: Failed to delete file '%s' from drive '%s' - remove() returned false.\n", filepath, driveName.c_str());
+    }
+
+    return result;
+}
+
 fs::FS* StorageManager::getDrive(String driveName) {
-    if (driveName == "sd" && _state == STORAGE_SD_ACTIVE) {
-        return &SD;
+    if (driveName == "sd") {
+        if (_state == STORAGE_SD_ACTIVE) return &SD;
+        return nullptr; // SD requested but currently unavailable
     }
     return &LittleFS;
 }
