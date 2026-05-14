@@ -30,12 +30,16 @@ void debug_print(const char* message) {
     // 1. Hardware Serial
     Serial.print(message);
 
-    // 2. Telnet Client
+    // // 2. File Logging
+    // FileSystem.appendLog("/terminal_output.txt", message);
+
+    // 3. Telnet Client
     if (telnetClient && telnetClient.connected()) {
         telnetClient.print(message);
         telnetClient.print("\r");
     }
 
+    // 4. WebSocket Broadcast
     log_buffer += message;
 }
 
