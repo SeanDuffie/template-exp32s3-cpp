@@ -5,5 +5,7 @@
 #include <HTTPClient.h>
 #include <Arduino.h>
 
+#include "core/debug.h"
+
 void setup_ota();
 void perform_ota_update();

@@ -1,5 +1,4 @@
 #include "sensors/mpu6050_imu.h"
-#include "core/debug.h"
 
 MPU6050Sensor::MPU6050Sensor(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}

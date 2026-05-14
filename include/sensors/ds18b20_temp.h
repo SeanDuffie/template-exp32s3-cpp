@@ -2,6 +2,8 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
+#include "core/debug.h"
+
 struct TempData {
     float tempC; // °C
     float tempF; // °F

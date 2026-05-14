@@ -1,5 +1,4 @@
 #include "sensors/bh1750_light.h"
-#include "core/debug.h"
 
 BH1750Sensor::BH1750Sensor(TwoWire& wireBus, uint8_t address) 
     : _wire(wireBus), _address(address) {}

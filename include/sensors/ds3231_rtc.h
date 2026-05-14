@@ -2,6 +2,8 @@
 #include <Wire.h>
 #include <RTClib.h>
 
+#include "core/debug.h"
+
 struct RTCData {
     uint32_t unixtime;    // Seconds since Jan 1, 1970
     float temperatureF;   // Internal module temperature

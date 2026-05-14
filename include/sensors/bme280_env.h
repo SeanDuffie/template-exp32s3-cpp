@@ -4,6 +4,8 @@
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
 
+#include "core/debug.h"
+
 // A clean struct to pass the data back to your main loop
 struct AirData {
     float tempC;        // °C

@@ -2,7 +2,6 @@
  * Handles static file serving, API routes, and LittleFS.
  */
 #include "network/webserver.h"
-#include "core/debug.h" // Gives access to 'ws' and 'update_requested'
 
 AsyncWebServer httpServer(80);
 
@@ -60,6 +59,8 @@ void setup_endpoints() {
 
         doc["totalBytes"] = FileSystem.getTotalBytes(drive);
         doc["usedBytes"] = FileSystem.getUsedBytes(drive);
+        doc["bytesPerRow"] = FileSystem.getBytesPerRow(drive);
+        doc["intervalMinutes"] = FileSystem.getIntervalMinutes(drive);
 
         JsonObject files = doc["files"].to<JsonObject>();
 

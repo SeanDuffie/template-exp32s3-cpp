@@ -1,7 +1,10 @@
 #pragma once
-#include "debug.h"
-#include "StorageManager.h"
+#include "core/debug.h"
+#include "core/StorageManager.h"
 #include "core/sensor_stats.h"
+
+// TODO: Should this eventually log binary files so that it skips serialization and is more space efficient/consistent?
+// It would require a custom parser on the frontend though, and would make it less human readable when inspecting the files directly on the device. Maybe add an option for both text and binary logging?
 
 // MARK: Modify for enabled sensors
 struct sDataRow {

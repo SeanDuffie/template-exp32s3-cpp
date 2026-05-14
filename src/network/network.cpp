@@ -1,11 +1,7 @@
 /**
  * Handles the captive portal, Wi-Fi connections, and physical resets.
  */
-#include <time.h>
-#include <map>
 #include "network/network.h"
-#include "network/webserver.h"
-#include "core/debug.h"
 
 // Define a temporary DNS server for the captive portal
 DNSServer dns;

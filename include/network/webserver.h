@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 
 #include "core/StorageManager.h"
+#include "core/debug.h"
 
 extern AsyncWebServer httpServer;
 
