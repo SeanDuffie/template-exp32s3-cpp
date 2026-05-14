@@ -1,8 +1,6 @@
 #pragma once
 #include "debug.h"
-#include <LittleFS.h>
-#include <SD.h>
-#include <sdcard.h>
+#include "StorageManager.h"
 #include "core/sensor_stats.h"
 
 struct sDataRow {
@@ -25,6 +23,6 @@ private:
 
 public:
     Datalogger(uint32_t interval_ms);
-    bool setup_logfile(const String& fn, String column_headers, bool use_sd);
+    bool begin(const String& fn, String column_headers, bool use_sd);
     bool append_row(sDataRow& data);
 };

@@ -9,7 +9,7 @@ Datalogger::Datalogger(uint32_t interval_ms) : _interval_ms(interval_ms) {
     this->_use_sd = false;
 }
 
-bool Datalogger::setup_logfile(const String& fn, String column_headers, bool use_sd) {
+bool Datalogger::begin(const String& fn, String column_headers, bool use_sd) {
     this->filename = fn;
     this->_col_headers = column_headers;
     this->_use_sd = use_sd;
@@ -18,7 +18,7 @@ bool Datalogger::setup_logfile(const String& fn, String column_headers, bool use
         // if (!SD.exists(this->filename)) {
         //     File file = SD.open(this->filename, FILE_WRITE);
         //     if (file) {
-        //         file.print("Timestamp,Uptime_s");
+        //         file.print("Timestamp,Uptime_ms");
 
         //         // // Iterate to build the header string dynamically on boot
         //         // for (int i = 0; i < this->sensorList.length(); i++) {
@@ -42,7 +42,7 @@ bool Datalogger::setup_logfile(const String& fn, String column_headers, bool use
         if (!LittleFS.exists(this->filename)) {
             File file = LittleFS.open(this->filename, FILE_WRITE);
             if (file) {
-                file.print("Timestamp,Uptime_s");
+                file.print("Timestamp,Uptime_ms");
 
                 // // Iterate to build the header string dynamically on boot
                 // for (int i = 0; i < this->sensorList.length(); i++) {
@@ -67,51 +67,19 @@ bool Datalogger::setup_logfile(const String& fn, String column_headers, bool use
 
 // Call this every 1000ms
 bool Datalogger::append_row(sDataRow& data) {
-    // // 1. Tell all nodes to read hardware and run math
-    // for (int i = 0; i < NODE_COUNT; i++) {
-    //     activeNodes[i]->sample();
-    // }
+    // Check timer
+    if (millis() - this->_last_log_time < this->_interval_ms) { return true; }
 
-    // // 2. Check timer
-    if (millis() - this->_last_log_time < this->_interval_ms) { return false; }
-    this->_last_log_time = millis();
-
-    // 3. Construct the CSV row safely without String objects
+    // Construct the CSV row safely without String objects
     char row_buffer[512];
     size_t offset = snprintf(row_buffer, sizeof(row_buffer), "%s,%u", data.timestamp.c_str(), data.uptime);
 
-    // for (int i = 0; i < NODE_COUNT; i++) {
-    //     if (offset < sizeof(row_buffer) - 1) {
-    //         row_buffer[offset++] = ','; // Add comma
-    //         offset += activeNodes[i]->writeData(row_buffer + offset, sizeof(row_buffer) - offset);
-    //     }
-    // }
+    // Pass the filepath and the formatted CSV row.
+    bool success = FileSystem.appendLog(this->filename.c_str(), row_buffer);
 
-    // 4. Write to File
-    if (this->_use_sd) {
-        // // Write to SD Card
-        // if (!SDCard.appendLog(this->filename.c_str(), row_buffer)) {
-        //     debug_println("Failed to append to SD card.");
-        //     return false;
-        // }
-        debug_println("ERROR: SD card not implemented for logging yet.");
-    } else {
-        // Write to LittleFS
-        File file = LittleFS.open("/sensor_log.csv", FILE_APPEND);
-        if (file) {
-            file.println(row_buffer);
-            file.close();
-        }
-        else {
-            debug_println("Failed to open log file for appending.");
-            return false;
-        }
+    if (success) {
+        this->_last_log_time = millis();
     }
 
-    return true;
-
-    // // 5. Reset all math objects
-    // for (int i = 0; i < NODE_COUNT; i++) {
-    //     activeNodes[i]->reset();
-    // }
+    return success;
 }
