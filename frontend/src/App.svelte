@@ -6,6 +6,208 @@
     let isDarkMode = $state(true);
     let terminalContainer: HTMLElement | undefined = $state<HTMLElement>();
 
+    // Handle theme swapping logic
+    function toggleTheme() {
+        isDarkMode = !isDarkMode;
+        if (isDarkMode) {
+            document.body.classList.add('dark');
+        } else {
+            document.body.classList.remove('dark');
+        }
+    }
+
+    // -- Filesystem Data --
+    // Define the shape of the data coming from the ESP32
+    interface FileData {
+        // name: string;
+        size: number;
+    }
+
+    // Defines the exact JSON structure sent by your ESP32
+    interface StorageAPIResponse {
+        totalBytes?: number;
+        usedBytes?: number;
+        files?: { [filename: string]: FileData };
+    }
+
+    // Defines your Svelte UI state
+    interface StorageState {
+        totalKB: number;
+        usedKB: number;
+        freeKB: number;
+        percentUsed: number;
+        estimatedDaysLeft: number;
+        files: { [filename: string]: FileData };
+        error: string | null;
+    }
+
+    // Stores file and storage info for LittleFS
+    let littleFS = $state<StorageState>({
+        totalKB: 0,
+        usedKB: 0,
+        freeKB: 0,
+        percentUsed: 0,
+        estimatedDaysLeft: 0,
+        files: {} as Record<string, FileData>,
+        error: null
+    });
+
+    // Store file and storage info for SD Card
+    let sdFS = $state<StorageState>({
+        totalKB: 0,
+        usedKB: 0,
+        freeKB: 0,
+        percentUsed: 0,
+        estimatedDaysLeft: 0,
+        files: {} as Record<string, FileData>,
+        error: null
+    });
+
+
+    // Helper function to process storage stats
+    function processStorageData(targetState: StorageState, file_data: StorageAPIResponse, bytesPerRow = 80, intervalMinutes = 15) {
+        const total = file_data.totalBytes || 0;
+        const used = file_data.usedBytes || 0;
+        const free = total - used;
+
+        targetState.totalKB = Number((total / 1024).toFixed(1));
+        targetState.usedKB = Number((used / 1024).toFixed(1));
+        targetState.freeKB = Number((free / 1024).toFixed(1));
+        targetState.percentUsed = total > 0 ? Math.round((used / total) * 100) : 0;
+
+        // Estimate Days Left (assuming 80 bytes/row, 15min interval = ~7.68 KB/day)
+        const bytesPerDay = bytesPerRow * (60 / intervalMinutes) * 24;
+        targetState.estimatedDaysLeft = Math.floor(free / bytesPerDay);
+        targetState.files = file_data.files || {};
+    }
+
+    async function loadFiles() {
+        try {
+            // Fetch LittleFS
+            const resLFS = await fetch('/api/files?drive=lfs');
+            if (resLFS.ok) { processStorageData(littleFS, await resLFS.json()); }
+            else {
+                littleFS.error = "LittleFS Unavailable. Device may be malfunctioning.";
+                console.error("Failed to fetch files from LittleFS.");
+                littleFS.totalKB = 0;
+                littleFS.usedKB = 0;
+                littleFS.freeKB = 0;
+                littleFS.percentUsed = 0;
+                littleFS.estimatedDaysLeft = 0;
+                littleFS.files = {};
+            }
+
+            // Fetch SD Card
+            const resSD = await fetch('/api/files?drive=sd');
+            if (resSD.ok) {
+                sdFS.error = null; // Clear any previous error
+                processStorageData(sdFS, await resSD.json());
+            }
+            else {
+                sdFS.error = "SD card Disconnected or Unreadable.";
+                console.error("Failed to fetch files from SD card.");
+                sdFS.totalKB = 0;
+                sdFS.usedKB = 0;
+                sdFS.freeKB = 0;
+                sdFS.percentUsed = 0;
+                sdFS.estimatedDaysLeft = 0;
+                sdFS.files = {};
+            }
+        } catch (e) {
+            console.error("Error fetching files");
+        }
+    }
+
+    async function deleteFile(filename: string, drive: 'littlefs' | 'sd') {
+        if (!confirm(`Are you sure you want to permanently delete ${filename}?`)) return;
+        
+        try {
+            const resDel = await fetch(`/api/delete?file=${filename}&drive=${drive}`, { method: 'DELETE' });
+            if (resDel.ok) {
+                // Reload the files and recalculate storage math
+                alert(`${filename} deleted successfully. Reloading file list...`);
+                await loadFiles();
+            } else {
+                alert("Failed to delete file.");
+            }
+        } catch (e) {
+            alert("Error during file deletion.");
+            console.error("Network error during deletion", e);
+        }
+    }
+
+    let filePollInterval: number;
+
+    $effect(() => {
+        if (currentPage === 'files') {
+            // Load immediately upon entering the page
+            loadFiles(); 
+            // Then poll every 15 seconds (adjust as needed)
+            filePollInterval = setInterval(loadFiles, 15000);
+        } else {
+            // Stop polling when the user navigates away
+            clearInterval(filePollInterval);
+        }
+        
+        // Cleanup function for when the component unmounts
+        return () => clearInterval(filePollInterval); 
+    });
+
+    // Replace DOM contents with new page
+    function navigate(page: string) {
+        currentPage = page;
+        if (page === 'files') {
+            loadFiles();
+        }
+    }
+
+    // // Auto-scroll terminal when new logs arrive
+    // $effect(() => {
+    //     // This runs automatically whenever currentPage or terminalContainer changes
+    //     if (currentPage === 'console' && terminalContainer) {
+    //         terminalContainer.scrollTop = terminalContainer.scrollHeight;
+    //     }
+    // });
+
+    // // System States
+    // let isUpdating = $state(false);
+    // let wifiSSID = $state("");
+    // let wifiPass = $state("");
+    // let wifiStatusMessage = $state("");
+
+    // async function handleUpdate() {
+    //     isUpdating = true;
+    //     try {
+    //         // Replace with actual ESP32 API endpoint
+    //         const resOTA = await fetch('/api/update', { method: 'POST' });
+    //         if (resOTA.ok) alert("Update triggered. Rebooting.");
+    //         else alert("Update failed.");
+    //     } catch (e) {
+    //         alert("Network error.");
+    //     }
+    //     isUpdating = false;
+    // }
+
+    // async function handleWifiUpdate() {
+    //     if (!wifiSSID) {
+    //         wifiStatusMessage = "SSID cannot be blank.";
+    //         return;
+    //     }
+    //     wifiStatusMessage = "Sending credentials...";
+    //     try {
+    //         // Replace with actual ESP32 API endpoint
+    //         const resWifi = await fetch('/api/wifi', {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ ssid: wifiSSID, password: wifiPass })
+    //         });
+    //         if (res.ok) wifiStatusMessage = "Credentials saved. Rebooting.";
+    //         else wifiStatusMessage = "Failed to update credentials.";
+    //     } catch (e) {
+    //         wifiStatusMessage = "Network error.";
+    //     }
+    // }
+
     // -- Session Data --
     let sessionData = $state({
         systemTime: "...",  // What is the current time?
@@ -62,93 +264,6 @@
         lux: "",  // Lumen
     });
 
-    // -- Filesystem Data --
-    // Define the shape of the data coming from the ESP32
-    interface FileData {
-        name: string;
-        size: number;
-    }
-    let fileList = $state<FileData[]>([]);
-    
-    // // System States
-    // let isUpdating = $state(false);
-    // let wifiSSID = $state("");
-    // let wifiPass = $state("");
-    // let wifiStatusMessage = $state("");
-    
-    // async function handleUpdate() {
-    //     isUpdating = true;
-    //     try {
-    //         // Replace with actual ESP32 API endpoint
-    //         const res = await fetch('/api/update', { method: 'POST' });
-    //         if (res.ok) alert("Update triggered. Rebooting.");
-    //         else alert("Update failed.");
-    //     } catch (e) {
-    //         alert("Network error.");
-    //     }
-    //     isUpdating = false;
-    // }
-    
-    // async function handleWifiUpdate() {
-    //     if (!wifiSSID) {
-    //         wifiStatusMessage = "SSID cannot be blank.";
-    //         return;
-    //     }
-    //     wifiStatusMessage = "Sending credentials...";
-    //     try {
-    //         // Replace with actual ESP32 API endpoint
-    //         const res = await fetch('/api/wifi', {
-    //             method: 'POST',
-    //             headers: { 'Content-Type': 'application/json' },
-    //             body: JSON.stringify({ ssid: wifiSSID, password: wifiPass })
-    //         });
-    //         if (res.ok) wifiStatusMessage = "Credentials saved. Rebooting.";
-    //         else wifiStatusMessage = "Failed to update credentials.";
-    //     } catch (e) {
-    //         wifiStatusMessage = "Network error.";
-    //     }
-    // }
-
-    async function loadFiles() {
-        try {
-            const res = await fetch('/api/files');
-            if (res.ok) {
-                const data = await res.json();
-                fileList = data.files;
-            } else {
-                console.error("Failed to fetch files");
-            }
-        } catch (e) {
-            console.error("Error fetching files");
-        }
-    }
-
-    // Handle theme swapping logic
-    function toggleTheme() {
-        isDarkMode = !isDarkMode;
-        if (isDarkMode) {
-            document.body.classList.add('dark');
-        } else {
-            document.body.classList.remove('dark');
-        }
-    }
-
-    // Replace DOM contents with new page
-    function navigate(page: string) {
-        currentPage = page;
-        if (page === 'files') {
-            loadFiles();
-        }
-    }
-
-    // Auto-scroll terminal when new logs arrive
-    $effect(() => {
-        // This runs automatically whenever currentPage or terminalContainer changes
-        if (currentPage === 'console' && terminalContainer) {
-            terminalContainer.scrollTop = terminalContainer.scrollHeight;
-        }
-    });
-
     onMount(() => {
         // Detect system preference
         if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
@@ -172,7 +287,7 @@
                     sessionData.upsec = Number(data.uptime);
                     sessionData.uptime = new Date(sessionData.upsec * 1000).toISOString().slice(11, 19);
                 }
-                
+
                 if (data.active) {
                     activeSensors.soilTemp = data.active.soilTemp;
                     activeSensors.soilMoist = data.active.soilMoist;
@@ -182,8 +297,6 @@
                     activeSensors.imu = data.active.imu;
                 }
 
-                // Note: You have no logic in main.cpp generating doc["soil"] yet.
-                // This prevents it from crashing until you add it.
                 if (activeSensors.soilTemp && data.soil) {
                     soilData.tempF = data.soil.probeTempF?.toFixed(2) || "";
                     soilData.tempC = data.soil.probeTempC?.toFixed(2) || "";
@@ -223,7 +336,7 @@
                     imuData.gyroZ = data.imu.gyroZ || "";
                     imuData.tempF = data.imu.tempF || "";
                 }
-                
+
                 if (data.logs) {
                     sessionData.terminalLogs += data.logs;
 
@@ -243,159 +356,219 @@
 
 </script>
 
-<!-- <body class="dark"> -->
-    <main class="app-container">
-        <header>
-            <h1>Sensor Node Dashboard</h1>
-            <span class="status-indicator">●</span>
-        </header>
+<main class="app-container">
+    <header>
+        <h1>Sensor Node Dashboard</h1>
+        <span class="status-indicator">●</span>
+    </header>
 
-        <nav class="navbar">
-            <div class="nav-links">
-                <button class:active={currentPage === 'home'} onclick={() => navigate('home')}>Dashboard</button>
-                <button class:active={currentPage === 'files'} onclick={() => navigate('files')}>SD Card</button>
-                <button class:active={currentPage === 'console'} onclick={() => navigate('console')}>Console</button>
-                <button onclick={toggleTheme}>{isDarkMode ? '☀️ Light' : '🌙 Dark'}</button>
-            </div>
-        </nav>
-
-        <div class="card system-stats">
-            <div class="stat"><span class="label">System Time:</span> {sessionData.systemTime}</div>
-            <div class="stat"><span class="label">Uptime:</span> {sessionData.uptime}</div>
-            <!-- <div class="stat"><span class="label">Status:</span> <span style="color: #16a34a;">●</span></div> -->
+    <nav class="navbar">
+        <div class="nav-links">
+            <button class:active={currentPage === 'home'} onclick={() => navigate('home')}>Dashboard</button>
+            <button class:active={currentPage === 'files'} onclick={() => navigate('files')}>Filesystem</button>
+            <button class:active={currentPage === 'console'} onclick={() => navigate('console')}>Console</button>
+            <button onclick={toggleTheme}>{isDarkMode ? '☀️ Light' : '🌙 Dark'}</button>
         </div>
+    </nav>
 
-        {#if currentPage === 'home'}
-            <div class="dashboard grid-container">
-                <!-- Soil Temperature (DS18B20) -->
-                {#if activeSensors.soilTemp}
-                <section class="card">
-                    <h2>Temperature Probe (DS18B20)</h2>
-                    <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
-                    <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
-                </section>
-                {/if}
+    <div class="card system-stats">
+        <div class="stat"><span class="label">System Time:</span> {sessionData.systemTime}</div>
+        <div class="stat"><span class="label">Uptime:</span> {sessionData.uptime}</div>
+        <!-- <div class="stat"><span class="label">Status:</span> <span style="color: #16a34a;">●</span></div> -->
+    </div>
 
-                <!-- Soil Moisture (Capacitive ADC) -->
-                {#if activeSensors.soilMoist}
-                <section class="card">
-                    <h2>Capacitive Soil Moisture Sensor (Analog)</h2>
-                    <div class="reading"><span class="label">Moisture Level</span><span class="value">{soilData.moisture}%</span></div>
-                    <div class="reading"><span class="label">Raw ADC</span><span class="value">{soilData.moistureADC}</span></div>
-                </section>
-                {/if}
+    {#if currentPage === 'home'}
+        <div class="dashboard grid-container">
+            <!-- Soil Temperature (DS18B20) -->
+            {#if activeSensors.soilTemp}
+            <section class="card">
+                <h2>Temperature Probe (DS18B20)</h2>
+                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
+                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
+            </section>
+            {/if}
 
-                <!-- Air (BME280) -->
-                {#if activeSensors.air}
-                <section class="card">
-                    <h2>Air Quality Sensor (BME280)</h2>
-                    <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempF}°F</span></div>
-                    <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempC}°C</span></div>
-                    <div class="reading"><span class="label">Humidity</span><span class="value">{airData.humidity}%</span></div>
-                    <div class="reading"><span class="label">Pressure</span><span class="value">{airData.pressure} hPa</span></div>
-                </section>
-                {/if}
+            <!-- Soil Moisture (Capacitive ADC) -->
+            {#if activeSensors.soilMoist}
+            <section class="card">
+                <h2>Capacitive Soil Moisture Sensor (Analog)</h2>
+                <div class="reading"><span class="label">Moisture Level</span><span class="value">{soilData.moisture}%</span></div>
+                <div class="reading"><span class="label">Raw ADC</span><span class="value">{soilData.moistureADC}</span></div>
+            </section>
+            {/if}
 
-                <!-- Lux (BH1750) -->
-                {#if activeSensors.lux}
-                <section class="card">
-                    <h2>Lux Sensor (BH1750)</h2>
-                    <div class="reading"><span class="label">Light Intensity</span><span class="value">{lightData.lux} Lux</span></div>
-                </section>
-                {/if}
+            <!-- Air (BME280) -->
+            {#if activeSensors.air}
+            <section class="card">
+                <h2>Air Quality Sensor (BME280)</h2>
+                <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempF}°F</span></div>
+                <div class="reading"><span class="label">Air Temp</span><span class="value">{airData.tempC}°C</span></div>
+                <div class="reading"><span class="label">Humidity</span><span class="value">{airData.humidity}%</span></div>
+                <div class="reading"><span class="label">Pressure</span><span class="value">{airData.pressure} hPa</span></div>
+            </section>
+            {/if}
 
-                <!-- GPS (NEO-6M) -->
-                {#if activeSensors.gps}
-                <section class="card">
-                    <h2>GPS Location Module (NEO-6M)</h2>
-                    <div class="reading"><span class="label">GPS Time</span><span class="value">{gpsData.time}</span></div>
-                    <div class="reading"><span class="label">Latitude</span><span class="value">{gpsData.lat}</span></div>
-                    <div class="reading"><span class="label">Longitude</span><span class="value">{gpsData.lon}</span></div>
-                    <div class="reading"><span class="label">Altitude</span><span class="value">{gpsData.alt}</span></div>
-                    <div class="reading"><span class="label">Speed</span><span class="value">{gpsData.speed}</span></div>
-                    <div class="reading"><span class="label">Satellite Count</span><span class="value">{gpsData.numSats}</span></div>
-                </section>
-                {/if}
+            <!-- Lux (BH1750) -->
+            {#if activeSensors.lux}
+            <section class="card">
+                <h2>Lux Sensor (BH1750)</h2>
+                <div class="reading"><span class="label">Light Intensity</span><span class="value">{lightData.lux} Lux</span></div>
+            </section>
+            {/if}
 
-                <!-- IMU (MPU6050) -->
-                {#if activeSensors.imu}
-                <section class="card">
-                    <h2>IMU Orientation Sensor (MPU6050)</h2>
-                    <div class="reading"><span class="label">Accelerometer X</span><span class="value">{imuData.accelX}°</span></div>
-                    <div class="reading"><span class="label">Accelerometer Y</span><span class="value">{imuData.accelY}°</span></div>
-                    <div class="reading"><span class="label">Accelerometer Z</span><span class="value">{imuData.accelZ}°</span></div>
-                    <div class="reading"><span class="label">Gyroscope X</span><span class="value">{imuData.gyroX}°</span></div>
-                    <div class="reading"><span class="label">Gyroscope Y</span><span class="value">{imuData.gyroY}°</span></div>
-                    <div class="reading"><span class="label">Gyroscope Z</span><span class="value">{imuData.gyroZ}°</span></div>
-                    <div class="reading"><span class="label">IMU Temperature</span><span class="value">{imuData.tempF}°F</span></div>
-                </section>
-                {/if}
-                
-                <!-- <section class="card full-width admin-panel">
-                    <h2>System Administration</h2>
+            <!-- GPS (NEO-6M) -->
+            {#if activeSensors.gps}
+            <section class="card">
+                <h2>GPS Location Module (NEO-6M)</h2>
+                <div class="reading"><span class="label">GPS Time</span><span class="value">{gpsData.time}</span></div>
+                <div class="reading"><span class="label">Latitude</span><span class="value">{gpsData.lat}</span></div>
+                <div class="reading"><span class="label">Longitude</span><span class="value">{gpsData.lon}</span></div>
+                <div class="reading"><span class="label">Altitude</span><span class="value">{gpsData.alt}</span></div>
+                <div class="reading"><span class="label">Speed</span><span class="value">{gpsData.speed}</span></div>
+                <div class="reading"><span class="label">Satellite Count</span><span class="value">{gpsData.numSats}</span></div>
+            </section>
+            {/if}
 
-                    <div class="admin-grid">
-                        <div class="firmware-section">
-                            <h3>Firmware</h3>
-                            <p>Pull latest firmware from the local server.</p>
-                            <button onclick={handleUpdate} disabled={isUpdating}>
-                                {isUpdating ? 'Downloading...' : 'Pull Update'}
-                            </button>
+            <!-- IMU (MPU6050) -->
+            {#if activeSensors.imu}
+            <section class="card">
+                <h2>IMU Orientation Sensor (MPU6050)</h2>
+                <div class="reading"><span class="label">Accelerometer X</span><span class="value">{imuData.accelX}°</span></div>
+                <div class="reading"><span class="label">Accelerometer Y</span><span class="value">{imuData.accelY}°</span></div>
+                <div class="reading"><span class="label">Accelerometer Z</span><span class="value">{imuData.accelZ}°</span></div>
+                <div class="reading"><span class="label">Gyroscope X</span><span class="value">{imuData.gyroX}°</span></div>
+                <div class="reading"><span class="label">Gyroscope Y</span><span class="value">{imuData.gyroY}°</span></div>
+                <div class="reading"><span class="label">Gyroscope Z</span><span class="value">{imuData.gyroZ}°</span></div>
+                <div class="reading"><span class="label">IMU Temperature</span><span class="value">{imuData.tempF}°F</span></div>
+            </section>
+            {/if}
+            
+            <!-- <section class="card full-width admin-panel">
+                <h2>System Administration</h2>
+
+                <div class="admin-grid">
+                    <div class="firmware-section">
+                        <h3>Firmware</h3>
+                        <p>Pull latest firmware from the local server.</p>
+                        <button onclick={handleUpdate} disabled={isUpdating}>
+                            {isUpdating ? 'Downloading...' : 'Pull Update'}
+                        </button>
+                    </div>
+
+                    <div class="wifi-section">
+                        <h3>Network Configuration</h3>
+                        <p>Update network credentials. Device will reboot upon saving.</p>
+                        <input type="text" placeholder="New SSID" bind:value={wifiSSID} />
+                        <input type="password" placeholder="New Password" bind:value={wifiPass} />
+                        <button onclick={handleWifiUpdate}>Save & Reboot</button>
+                        {#if wifiStatusMessage}
+                            <p class="status-msg">{wifiStatusMessage}</p>
+                        {/if}
+                    </div>
+                </div>
+            </section> -->
+        </div>
+    {/if}
+
+    {#if currentPage === 'files'}
+        <div class="files-view">
+            <!-- <header class="page-header"> -->
+                <h3>Onboard Filesystem</h3>
+            <!-- </header> -->
+            <div class="card full-width">
+                {#if littleFS.error}
+                    <div style="color: #ef4444; font-weight: bold; padding: 20px; text-align: center; border: 1px dashed #ef4444; border-radius: 4px; background: rgba(239, 68, 68, 0.1);">
+                        ⚠ {littleFS.error}
+                    </div>
+                {:else}
+                    <div>
+                        <div class="stat-row">
+                            <span class="label">Space Used:</span> {littleFS.usedKB} / {littleFS.totalKB} KB ({littleFS.percentUsed}%)
                         </div>
-
-                        <div class="wifi-section">
-                            <h3>Network Configuration</h3>
-                            <p>Update network credentials. Device will reboot upon saving.</p>
-                            <input type="text" placeholder="New SSID" bind:value={wifiSSID} />
-                            <input type="password" placeholder="New Password" bind:value={wifiPass} />
-                            <button onclick={handleWifiUpdate}>Save & Reboot</button>
-                            {#if wifiStatusMessage}
-                                <p class="status-msg">{wifiStatusMessage}</p>
-                            {/if}
+                        <div class="stat-estimate" style="color: var(--term-text); font-weight: bold;">
+                            Estimated logging time remaining: {littleFS.estimatedDaysLeft} days
                         </div>
                     </div>
-                </section> -->
-            </div>
-        {/if}
-
-        {#if currentPage === 'files'}
-            <div class="files-view">
-                <header class="page-header">
-                    <h2>SD Card Filesystem</h2>
-                </header>
-                <div class="card full-width">
                     <table class="file-table">
                         <thead>
                             <tr>
                                 <th>Filename</th>
-                                <th>Size</th>
+                                <th>Size (Bytes)</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {#each fileList as file}
+                            {#each Object.entries(littleFS.files) as [lfs_filename, lfs_data]}
                             <tr>
-                                <td>{file.name}</td>
-                                <td>{file.size}</td>
+                                <td>{lfs_filename}</td>
+                                <td>{lfs_data.size.toLocaleString()}</td>
                                 <!-- Points to a hypothetical ESP32 endpoint -->
-                                <td><a href="/api/download?file={file.name}" download class="btn-download">Download</a></td>
+                                <td>
+                                    <a href="/api/download?file={lfs_filename}&drive=littlefs" download class="btn-download">Download</a>
+                                    <button onclick={() => deleteFile(lfs_filename, 'littlefs')} class="btn-delete">Purge</button>
+                                </td>
                             </tr>
                             {/each}
                         </tbody>
                     </table>
-                </div>
+                {/if}
             </div>
-        {/if}
+            <p>
+                <em>*Note: Purging the index.html file or any icons will break the web interface.*</em>
+            </p>
 
-        {#if currentPage === 'console'}
-            <div class="console-view">
-                <div class="terminal" bind:this={terminalContainer}>
-                    <pre>{sessionData.terminalLogs}</pre>
-                </div>
+            <!-- <header class="page-header"> -->
+                <h3>SD Card Filesystem</h3>
+            <!-- </header> -->
+            <div class="card full-width">
+                {#if sdFS.error}
+                    <div style="color: #ef4444; font-weight: bold; padding: 20px; text-align: center; border: 1px dashed #ef4444; border-radius: 4px; background: rgba(239, 68, 68, 0.1);">
+                        ⚠ {sdFS.error}
+                    </div>
+                {:else}
+                    <div>
+                        <div class="stat-row">
+                            <span class="label">Space Used:</span> {sdFS.usedKB} / {sdFS.totalKB} KB ({sdFS.percentUsed}%)
+                        </div>
+                        <div class="stat-estimate" style="color: var(--term-text); font-weight: bold;">
+                            Estimated logging time remaining: {sdFS.estimatedDaysLeft} days
+                        </div>
+                    </div>
+                    <table class="file-table">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Size (Bytes)</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {#each Object.entries(sdFS.files) as [sd_filename, sd_data]}
+                            <tr>
+                                <td>{sd_filename}</td>
+                                <td>{sd_data.size.toLocaleString()}</td>
+                                <!-- Points to a hypothetical ESP32 endpoint -->
+                                <td>
+                                    <a href="/api/download?file={sd_filename}&drive=sd" download class="btn-download">Download</a>
+                                    <button onclick={() => deleteFile(sd_filename, 'sd')} class="btn-delete">Purge</button>
+                                </td>
+                            </tr>
+                            {/each}
+                        </tbody>
+                    </table>
+                {/if}
             </div>
-        {/if}
-    </main>
-<!-- </body> -->
+        </div>
+    {/if}
+
+    {#if currentPage === 'console'}
+        <div class="console-view">
+            <div class="terminal" bind:this={terminalContainer}>
+                <pre>{sessionData.terminalLogs}</pre>
+            </div>
+        </div>
+    {/if}
+</main>
 
 <style>
     /* CSS Variables for Light/Dark Mode */
@@ -534,6 +707,16 @@
         text-decoration: none;
         border-radius: 4px;
         font-size: 0.9rem;
+    }
+
+    .btn-delete {
+        background: #dc2626;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-left: 10px;
     }
 
     /* Console View */
