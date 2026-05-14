@@ -22,6 +22,15 @@ void setup_webserver() {
     // Note: You still need to implement the POST handler for /api/wifi here. 
     // This requires a JSON parsing library like AsyncJson to read the payload.
 
+    // httpServer.on("/api/networks", HTTP_GET, [](AsyncWebServerRequest *request){
+    //     update_requested = true;
+    //     request->send(200, "application/json", "{\"status\":\"updating\"}");
+    // });
+    // httpServer.on("/api/connect", HTTP_POST, [](AsyncWebServerRequest *request){
+    //     update_requested = true;
+    //     request->send(200, "application/json", "{\"status\":\"updating\"}");
+    // });
+
     // 3. Mount WebSockets (Defined in debug.cpp)
     httpServer.addHandler(&ws);
 
@@ -35,12 +44,26 @@ void setup_webserver() {
 
 void setup_endpoints() {
     // 1. List Files Endpoint
-    server.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
-        JsonDocument doc;
-        JsonArray files = doc["files"].to<JsonArray>();
+    httpServer.on("/api/files", HTTP_GET, [](AsyncWebServerRequest *request) {
+        String drive = request->hasParam("drive") ? request->getParam("drive")->value() : "littlefs";
 
-        // Swap 'LittleFS' for 'SD' when your hardware changes
-        File root = LittleFS.open("/");
+        JsonDocument doc;
+
+        // Ask the StorageManager for the filesystem
+        fs::FS* targetFS = FileSystem.getDrive(drive);
+
+        // Catch the null pointer if the drive is disconnected
+        if (targetFS == nullptr) {
+            request->send(503, "application/json", "{\"error\":\"Hardware disconnected\"}");
+            return;
+        }
+
+        doc["totalBytes"] = FileSystem.getTotalBytes(drive);
+        doc["usedBytes"] = FileSystem.getUsedBytes(drive);
+
+        JsonObject files = doc["files"].to<JsonObject>();
+
+        File root = targetFS->open("/");
         if (!root || !root.isDirectory()) {
             request->send(500, "application/json", "{\"error\":\"Failed to open directory\"}");
             return;
@@ -48,35 +71,58 @@ void setup_endpoints() {
 
         File file = root.openNextFile();
         while (file) {
-            JsonObject obj = files.add<JsonObject>();
-            // LittleFS includes the leading slash in the name, strip it for cleaner UI
             String fileName = String(file.name());
             if (fileName.startsWith("/")) fileName = fileName.substring(1);
-            
-            obj["name"] = fileName;
-            obj["size"] = file.size();
+
+            JsonObject fileObj = files[fileName].to<JsonObject>();
+            fileObj["size"] = file.size();
             file = root.openNextFile();
         }
-        
+
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
     });
 
     // 2. File Download Endpoint
-    server.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (request->hasParam("file")) {
-            String filename = "/" + request->getParam("file")->value();
-            
-            // Swap 'LittleFS' for 'SD' here as well
-            if (LittleFS.exists(filename)) {
-                // The 'true' boolean forces the browser to download instead of displaying it inline
-                request->send(LittleFS, filename, "application/octet-stream", true); 
-            } else {
-                request->send(404, "text/plain", "File Not Found");
-            }
-        } else {
+    httpServer.on("/api/download", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("file")) {
             request->send(400, "text/plain", "Bad Request: Missing file parameter");
+            return;
+        }
+        String filename = "/" + request->getParam("file")->value();
+        String drive = request->hasParam("drive") ? request->getParam("drive")->value() : "littlefs";
+
+        // Ask the StorageManager for the filesystem
+        fs::FS* targetFS = FileSystem.getDrive(drive);
+
+        // Swap 'LittleFS' for 'SD' here as well
+        if (targetFS->exists(filename)) {
+            // The 'true' boolean forces the browser to download instead of displaying it inline
+            request->send(*targetFS, filename, "application/octet-stream", true); 
+        } else {
+            request->send(404, "text/plain", "File Not Found");
+        }
+    });
+
+    // 3. File Delete Endpoint
+    httpServer.on("/api/delete", HTTP_DELETE, [](AsyncWebServerRequest *request) {
+        if (!request->hasParam("file")) {
+            request->send(400, "text/plain", "Bad Request: Missing file parameter");
+            return;
+        }
+        String filename = "/" + request->getParam("file")->value();
+        String drive = request->hasParam("drive") ? request->getParam("drive")->value() : "littlefs";
+
+        // Ask the StorageManager for the filesystem
+        fs::FS* targetFS = FileSystem.getDrive(drive);
+
+        // Swap 'LittleFS' for 'SD' here as well
+        if (targetFS->exists(filename)) {
+            debug_printf("WebServer: Deleting file '%s' from drive '%s'\n", filename.c_str(), drive.c_str());
+            FileSystem.deleteFile(filename.c_str(), drive);
+        } else {
+            request->send(404, "text/plain", "File Not Found");
         }
     });
 }
