@@ -54,26 +54,31 @@
 static bool led_state = false;
 #define RGB_LED_PIN 38
 
-#define USE_TEMP false
-#define USE_MOIST false
 #define USE_LUX true
+#define USE_MOIST false
+#define USE_TEMP false
 #define USE_AIR false
 #define USE_IMU false
 #define USE_GPS false
 #define USE_RTC false
 
-#if USE_LUX || USE_IMU
+#if USE_LUX || USE_IMU || USE_AIR
 #define USE_I2C true
 // TWO WIRE
 #include <Wire.h>
 TwoWire I2C_Bus = TwoWire(0);
 #endif
 
-#if USE_AIR
-// SPI
-// Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
-#include <SPI.h>
-SPIClass SPI_Bus = SPIClass(FSPI);
+// #if USE_
+// // SPI
+// // Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
+// #include <SPI.h>
+// SPIClass SPI_Bus = SPIClass(FSPI);
+// #endif
+
+#if USE_LUX
+#include "bh1750_light.h"
+BH1750Sensor luxSensor(I2C_Bus, 0x23);
 #endif
 
 #if USE_MOIST
@@ -89,14 +94,9 @@ DS18B20Sensor soilTempSensor(oneWireBus, 0);
 // DS18B20Sensor soilTempSensor2(oneWireBus, 1);
 #endif
 
-#if USE_LUX
-#include "bh1750_light.h"
-BH1750Sensor luxSensor(I2C_Bus, 0x23);
-#endif
-
 #if USE_AIR
 #include "bme280_env.h"
-BME280Sensor AirEnv = BME280Sensor(SPI_Bus, BME_CS);
+BME280Sensor AirEnv = BME280Sensor(I2C_Bus, 0x76);
 #endif
 
 #if USE_IMU
@@ -149,6 +149,15 @@ void setup() {
     // 6. Pull time from NTP server
     setup_ntp();
 
+    #if USE_I2C
+    I2C_Bus.begin(I2C_SCA, I2C_SCL); // TWO WIRE (I2C - SDA, SCL)
+    // I2C_Bus.setClock(100000); // Force standard 100kHz clock
+    #endif
+
+    #if USE_LUX
+    luxSensor.begin();
+    #endif
+
     #if USE_MOIST
     soilMoistureSensor.begin();    // Capacitive ADC
     #endif
@@ -158,20 +167,16 @@ void setup() {
     // soilTempSensor2.begin();
     #endif
 
-    #if USE_GPS
-    GPS.begin();        // UART
-    #endif
-
-    #if USE_I2C
-    I2C_Bus.begin(I2C_SCA, I2C_SCL); // TWO WIRE (I2C - SDA, SCL)
+    #if USE_AIR
+    AirEnv.begin();
     #endif
 
     #if USE_IMU
     IMU.begin();
     #endif
 
-    #if USE_LUX
-    luxSensor.begin();
+    #if USE_GPS
+    GPS.begin();        // UART
     #endif
 
     #if USE_RTC
@@ -180,12 +185,6 @@ void setup() {
     // if (myRTC.readData().lostPower) {
     //     myRTC.adjustTime(ntp_timestamp);
     // }
-    #endif
-
-    // I2C_Bus.setClock(100000); // Force standard 100kHz clock
-
-    #if USE_AIR
-    AirEnv.begin();
     #endif
 
     // 7. Initialize datalogger, uses either the SD card or LittleFS.
@@ -223,12 +222,12 @@ void loop() {
 
         // Add connected hardware flags
         JsonObject active = doc["active"].to<JsonObject>();
-        active["soilTemp"] = USE_TEMP;
-        active["soilMoist"] = USE_MOIST;
-        active["air"] = USE_AIR;
         active["lux"] = USE_LUX;
-        active["gps"] = USE_GPS;
+        active["soilMoist"] = USE_MOIST;
+        active["soilTemp"] = USE_TEMP;
+        active["air"] = USE_AIR;
         active["imu"] = USE_IMU;
+        active["gps"] = USE_GPS;
 
         /** RGB LED SECTION */
         led_state = !led_state;
@@ -239,6 +238,21 @@ void loop() {
         // JSONify System Metadata
         doc["timestamp"] = tstmp.c_str();
         doc["uptime"] = last_millis / 1000;
+
+        /** Lux (BH1750) */
+        #if USE_LUX
+        LuxData luxDat = luxSensor.readData();
+        if (luxDat.valid) {
+            debug_printf( "Lux: %.1f lux\n", luxDat.lux);
+        }
+
+        // Add Lux to data row for logging
+        dataRow.lux = luxDat.valid ? luxDat.lux : -1;
+
+        // Add Lux to Json
+        JsonObject lux = doc["lux"].to<JsonObject>();
+        lux["lux"] = luxDat.valid ? luxDat.lux : -1;
+        #endif
 
         /** Compost Moisture */
         #if USE_MOIST
@@ -255,7 +269,7 @@ void loop() {
         dataRow.soilMoisture = soilMoisture.valid ? soilMoisture.percentage : -1;
         dataRow.soilMoistureADC = soilMoisture.valid ? soilMoisture.rawValue : -1;
 
-        // Add Soil Temperature to Json
+        // Add Soil Moisture to Json
         JsonObject soil = doc["soil"].to<JsonObject>();
         soil["moisture"] = soilMoisture.valid ? soilMoisture.percentage : -1;
         soil["moistureADC"] = soilMoisture.valid ? soilMoisture.rawValue : -1;
@@ -294,19 +308,37 @@ void loop() {
         // soil["tempC2"] = soilTemp2.valid ? soilTemp2.tempC : -1;
         #endif
 
-        /** Lux (BH1750) */
-        #if USE_LUX
-        LuxData luxDat = luxSensor.readData();
-        if (luxDat.valid) {
-            debug_printf( "Lux: %.1f lux\n", luxDat.lux);
+        /** Air Temperature & Humidity (BME280) */
+        #if USE_AIR
+        AirData airDat = AirEnv.readData();
+        if (airDat.valid) {
+            debug_printf(
+                "Air Temperature: %.1f°C / %.1f°F\n",
+                airDat.tempC,
+                airDat.tempF
+            );
+            debug_printf(
+                "Air Humidity: %.0f %%\n",
+                airDat.humidity
+            );
+            debug_printf(
+                "Air Pressure: %.1f hPa\n",
+                airDat.pressure
+            );
         }
 
-        // Add Lux to data row for logging
-        dataRow.lux = luxDat.valid ? luxDat.lux : -1;
+        // Add Soil Moisture to data row for logging
+        dataRow.airTempC = airDat.valid ? airDat.tempC : -1;
+        dataRow.airTempF = airDat.valid ? airDat.tempF : -1;
+        dataRow.airHumidity = airDat.valid ? airDat.humidity : -1;
+        dataRow.airPress = airDat.valid ? airDat.pressure : -1;
 
-        // Add Lux to Json
-        JsonObject lux = doc["lux"].to<JsonObject>();
-        lux["lux"] = luxDat.valid ? luxDat.lux : -1;
+        // Add Air Data to JSON
+        JsonObject air = doc["air"].to<JsonObject>();
+        air["airTempF"] = airDat.valid ? airDat.tempF : -1;
+        air["airTempC"] = airDat.valid ? airDat.tempC : -1;
+        air["airHumidity"] = airDat.valid ? airDat.humidity : -1;
+        air["airPress"] = airDat.valid ? airDat.pressure : -1;
         #endif
 
         /** IMU Orientation (MPU6050) */
@@ -349,39 +381,6 @@ void loop() {
         imu["gyroY"] = imuDat.valid ? imuDat.gyroY : -1;
         imu["gyroZ"] = imuDat.valid ? imuDat.gyroZ : -1;
         imu["tempF"] = imuDat.valid ? imuDat.temperatureF : -1;
-        #endif
-
-        /** Air Temperature & Humidity (BME280) */
-        #if USE_AIR
-        AirData airDat = AirEnv.readData();
-        if (airDat.valid) {
-            debug_printf(
-                "Air Temperature: %.1f°C / %.1f°F\n",
-                airDat.tempC,
-                airDat.tempF
-            );
-            debug_printf(
-                "Air Humidity: %.0f %%\n",
-                airDat.humidity
-            );
-            debug_printf(
-                "Air Pressure: %.1f hPa\n",
-                airDat.pressure
-            );
-        }
-
-        // Add Soil Moisture to data row for logging
-        dataRow.airTempC = airDat.valid ? airDat.tempC : -1;
-        dataRow.airTempF = airDat.valid ? airDat.tempF : -1;
-        dataRow.airHumidity = airDat.valid ? airDat.humidity : -1;
-        dataRow.airPress = airDat.valid ? airDat.pressure : -1;
-
-        // Add Air Data to JSON
-        JsonObject air = doc["air"].to<JsonObject>();
-        air["airTempF"] = airDat.valid ? airDat.tempF : -1;
-        air["airTempC"] = airDat.valid ? airDat.tempC : -1;
-        air["airHumidity"] = airDat.valid ? airDat.humidity : -1;
-        air["airPress"] = airDat.valid ? airDat.pressure : -1;
         #endif
 
         /** GPS SECTION */

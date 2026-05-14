@@ -4,6 +4,8 @@
 #include <LittleFS.h>
 #include <SD.h>
 
+#include "core/debug.h"
+
 enum StorageState {
     STORAGE_SD_ACTIVE,
     STORAGE_FALLBACK_LITTLEFS,
@@ -27,6 +29,8 @@ public:
     size_t getUsedBytes(String driveName);
     void checkSDConnection();
     void processFallbackDump();
+    uint8_t getBytesPerRow(String driveName);
+    uint8_t getIntervalMinutes(String driveName);
 };
 
 extern StorageManager FileSystem;

@@ -1,5 +1,4 @@
 #include <core/StorageManager.h>
-#include "core/debug.h"
 
 StorageManager FileSystem;
 
@@ -146,4 +145,14 @@ void StorageManager::processFallbackDump() {
     
     LittleFS.remove(_fallbackFilename);
     debug_println("StorageManager: Dump complete. Fallback file deleted.");
+}
+
+uint8_t StorageManager::getBytesPerRow(String driveName) {
+    // For simplicity, return fixed values. In a real implementation, this could be dynamic or configurable.
+    return 80; // Default to 80 bytes per row
+}
+
+uint8_t StorageManager::getIntervalMinutes(String driveName) {
+    // For simplicity, return fixed values. In a real implementation, this could be dynamic or configurable.
+    return 15; // Default to 15 minutes
 }

@@ -27,6 +27,8 @@
     interface StorageAPIResponse {
         totalBytes?: number;
         usedBytes?: number;
+        bytesPerRow?: number;
+        intervalMinutes?: number;
         files?: { [filename: string]: FileData };
     }
 
@@ -65,9 +67,11 @@
 
 
     // Helper function to process storage stats
-    function processStorageData(targetState: StorageState, file_data: StorageAPIResponse, bytesPerRow = 80, intervalMinutes = 15) {
+    function processStorageData(targetState: StorageState, file_data: StorageAPIResponse) {
         const total = file_data.totalBytes || 0;
         const used = file_data.usedBytes || 0;
+        const bytesPerRow = file_data.bytesPerRow || 80; // Default to 80 if not provided
+        const intervalMinutes = file_data.intervalMinutes || 15; // Default to 15 if not provided
         const free = total - used;
 
         targetState.totalKB = Number((total / 1024).toFixed(1));
@@ -222,15 +226,18 @@
     // -- Hardware Configuration Flags --
     // Toggle these to true/false based on what is physically connected
     let activeSensors = $state({
-        soilTemp: false, // DS18B20
-        soilMoist: false, // Analog Capacitive Soil Moisture Sensor
-        air: false, // BME280
         lux: false, // BH1750
-        gps: false, // NEO-6M
-        imu: false // MPU6050
+        soilMoist: false, // Analog Capacitive Soil Moisture Sensor
+        soilTemp: false, // DS18B20
+        air: false, // BME280
+        imu: false, // MPU6050
+        gps: false // NEO-6M
     });
 
     // -- Sensor Data --
+    let lightData = $state({
+        lux: "",  // Lumen
+    });
     let soilData = $state({
         tempF: "", // °F
         tempC: "", // °C
@@ -243,14 +250,6 @@
         humidity: "",  // %
         pressure: "",  // hPa
     });
-    let gpsData = $state({
-        time: "",  // GPS Timestamp
-        lat: "",
-        lon: "",
-        alt: "",
-        speed: "",
-        numSats: "",
-    });
     let imuData = $state({
         accelX: "",
         accelY: "",
@@ -260,8 +259,13 @@
         gyroZ: "",
         tempF: "",
     });
-    let lightData = $state({
-        lux: "",  // Lumen
+    let gpsData = $state({
+        time: "",  // GPS Timestamp
+        lat: "",
+        lon: "",
+        alt: "",
+        speed: "",
+        numSats: "",
     });
 
     onMount(() => {
@@ -289,17 +293,16 @@
                 }
 
                 if (data.active) {
-                    activeSensors.soilTemp = data.active.soilTemp;
-                    activeSensors.soilMoist = data.active.soilMoist;
-                    activeSensors.air = data.active.air;
                     activeSensors.lux = data.active.lux;
-                    activeSensors.gps = data.active.gps;
+                    activeSensors.soilMoist = data.active.soilMoist;
+                    activeSensors.soilTemp = data.active.soilTemp;
+                    activeSensors.air = data.active.air;
                     activeSensors.imu = data.active.imu;
+                    activeSensors.gps = data.active.gps;
                 }
 
-                if (activeSensors.soilTemp && data.soil) {
-                    soilData.tempF = data.soil.probeTempF?.toFixed(2) || "";
-                    soilData.tempC = data.soil.probeTempC?.toFixed(2) || "";
+                if (activeSensors.lux && data.lux) {
+                    lightData.lux = data.lux.lux || "";
                 }
 
                 if (activeSensors.soilMoist && data.soil) {
@@ -307,24 +310,16 @@
                     soilData.moistureADC = data.soil.binMoistRaw || "";
                 }
 
+                if (activeSensors.soilTemp && data.soil) {
+                    soilData.tempF = data.soil.probeTempF?.toFixed(2) || "";
+                    soilData.tempC = data.soil.probeTempC?.toFixed(2) || "";
+                }
+
                 if (activeSensors.air && data.air) {
                     airData.tempF = data.air.airTempF?.toFixed(2) || "";
                     airData.tempC = data.air.airTempC?.toFixed(2) || "";
                     airData.humidity = data.air.airHumidity?.toFixed(2) || "";
                     airData.pressure = data.air.airPress?.toFixed(2) || "";
-                }
-
-                if (activeSensors.lux && data.lux) {
-                    lightData.lux = data.lux.lux || "";
-                }
-
-                if (activeSensors.gps && data.gps) {
-                    gpsData.time = data.gps.time || "";
-                    gpsData.lat = data.gps.latitude || "";
-                    gpsData.lon = data.gps.longitude || "";
-                    gpsData.alt = data.gps.altitude || "";
-                    gpsData.speed = data.gps.speed || "";
-                    gpsData.numSats = data.gps.satellites || "";
                 }
 
                 if (activeSensors.imu && data.imu) {
@@ -335,6 +330,15 @@
                     imuData.gyroY = data.imu.gyroY || "";
                     imuData.gyroZ = data.imu.gyroZ || "";
                     imuData.tempF = data.imu.tempF || "";
+                }
+
+                if (activeSensors.gps && data.gps) {
+                    gpsData.time = data.gps.time || "";
+                    gpsData.lat = data.gps.latitude || "";
+                    gpsData.lon = data.gps.longitude || "";
+                    gpsData.alt = data.gps.altitude || "";
+                    gpsData.speed = data.gps.speed || "";
+                    gpsData.numSats = data.gps.satellites || "";
                 }
 
                 if (data.logs) {
@@ -379,12 +383,11 @@
 
     {#if currentPage === 'home'}
         <div class="dashboard grid-container">
-            <!-- Soil Temperature (DS18B20) -->
-            {#if activeSensors.soilTemp}
+            <!-- Lux (BH1750) -->
+            {#if activeSensors.lux}
             <section class="card">
-                <h2>Temperature Probe (DS18B20)</h2>
-                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
-                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
+                <h2>Lux Sensor (BH1750)</h2>
+                <div class="reading"><span class="label">Light Intensity</span><span class="value">{lightData.lux} Lux</span></div>
             </section>
             {/if}
 
@@ -394,6 +397,15 @@
                 <h2>Capacitive Soil Moisture Sensor (Analog)</h2>
                 <div class="reading"><span class="label">Moisture Level</span><span class="value">{soilData.moisture}%</span></div>
                 <div class="reading"><span class="label">Raw ADC</span><span class="value">{soilData.moistureADC}</span></div>
+            </section>
+            {/if}
+
+            <!-- Soil Temperature (DS18B20) -->
+            {#if activeSensors.soilTemp}
+            <section class="card">
+                <h2>Temperature Probe (DS18B20)</h2>
+                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
+                <div class="reading"><span class="label">Temperature</span><span class="value">{soilData.tempF}°F</span></div>
             </section>
             {/if}
 
@@ -408,11 +420,17 @@
             </section>
             {/if}
 
-            <!-- Lux (BH1750) -->
-            {#if activeSensors.lux}
+            <!-- IMU (MPU6050) -->
+            {#if activeSensors.imu}
             <section class="card">
-                <h2>Lux Sensor (BH1750)</h2>
-                <div class="reading"><span class="label">Light Intensity</span><span class="value">{lightData.lux} Lux</span></div>
+                <h2>IMU Orientation Sensor (MPU6050)</h2>
+                <div class="reading"><span class="label">Accelerometer X</span><span class="value">{imuData.accelX}°</span></div>
+                <div class="reading"><span class="label">Accelerometer Y</span><span class="value">{imuData.accelY}°</span></div>
+                <div class="reading"><span class="label">Accelerometer Z</span><span class="value">{imuData.accelZ}°</span></div>
+                <div class="reading"><span class="label">Gyroscope X</span><span class="value">{imuData.gyroX}°</span></div>
+                <div class="reading"><span class="label">Gyroscope Y</span><span class="value">{imuData.gyroY}°</span></div>
+                <div class="reading"><span class="label">Gyroscope Z</span><span class="value">{imuData.gyroZ}°</span></div>
+                <div class="reading"><span class="label">IMU Temperature</span><span class="value">{imuData.tempF}°F</span></div>
             </section>
             {/if}
 
@@ -426,20 +444,6 @@
                 <div class="reading"><span class="label">Altitude</span><span class="value">{gpsData.alt}</span></div>
                 <div class="reading"><span class="label">Speed</span><span class="value">{gpsData.speed}</span></div>
                 <div class="reading"><span class="label">Satellite Count</span><span class="value">{gpsData.numSats}</span></div>
-            </section>
-            {/if}
-
-            <!-- IMU (MPU6050) -->
-            {#if activeSensors.imu}
-            <section class="card">
-                <h2>IMU Orientation Sensor (MPU6050)</h2>
-                <div class="reading"><span class="label">Accelerometer X</span><span class="value">{imuData.accelX}°</span></div>
-                <div class="reading"><span class="label">Accelerometer Y</span><span class="value">{imuData.accelY}°</span></div>
-                <div class="reading"><span class="label">Accelerometer Z</span><span class="value">{imuData.accelZ}°</span></div>
-                <div class="reading"><span class="label">Gyroscope X</span><span class="value">{imuData.gyroX}°</span></div>
-                <div class="reading"><span class="label">Gyroscope Y</span><span class="value">{imuData.gyroY}°</span></div>
-                <div class="reading"><span class="label">Gyroscope Z</span><span class="value">{imuData.gyroZ}°</span></div>
-                <div class="reading"><span class="label">IMU Temperature</span><span class="value">{imuData.tempF}°F</span></div>
             </section>
             {/if}
             
