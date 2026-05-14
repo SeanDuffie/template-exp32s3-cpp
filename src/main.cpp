@@ -189,10 +189,8 @@ void setup() {
     #endif
 
     // 7. Initialize datalogger, uses either the SD card or LittleFS.
-    bool use_sd = false;
     start_time = millis();
-
-    logger.begin("/sensor_log.csv", "Timestamp,Uptime_ms", use_sd);
+    logger.begin("/sensor_log.csv", "Timestamp,Uptime_ms,lux"); //,soilMoisture,soilMoistureADC,soilTempC,soilTempF,airTempC,airTempF,humidity,pressure,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,gpsLat,gpsLon,gpsAlt,gpsSpeed,gpsSats");
 }
 
 
@@ -253,6 +251,10 @@ void loop() {
             );
         }
 
+        // Add Soil Moisture to data row for logging
+        dataRow.soilMoisture = soilMoisture.valid ? soilMoisture.percentage : -1;
+        dataRow.soilMoistureADC = soilMoisture.valid ? soilMoisture.rawValue : -1;
+
         // Add Soil Temperature to Json
         JsonObject soil = doc["soil"].to<JsonObject>();
         soil["moisture"] = soilMoisture.valid ? soilMoisture.percentage : -1;
@@ -278,6 +280,10 @@ void loop() {
         //     );
         // }
 
+        // Add Soil Temperature to data row for logging
+        dataRow.soilTempC = soilTemp.valid ? soilTemp.tempC : -1;
+        dataRow.soilTempF = soilTemp.valid ? soilTemp.tempF : -1;
+
         // Add Soil Temperature to Json
         #if !USE_MOIST
         JsonObject soil = doc["soil"].to<JsonObject>();
@@ -294,6 +300,9 @@ void loop() {
         if (luxDat.valid) {
             debug_printf( "Lux: %.1f lux\n", luxDat.lux);
         }
+
+        // Add Lux to data row for logging
+        dataRow.lux = luxDat.valid ? luxDat.lux : -1;
 
         // Add Lux to Json
         JsonObject lux = doc["lux"].to<JsonObject>();
@@ -321,6 +330,15 @@ void loop() {
                 imuDat.temperatureF
             );
         }
+
+        // Add IMU data to data row for logging
+        dataRow.accelX = imuDat.valid ? imuDat.accelX : -1;
+        dataRow.accelY = imuDat.valid ? imuDat.accelY : -1;
+        dataRow.accelZ = imuDat.valid ? imuDat.accelZ : -1;
+        dataRow.gyroX = imuDat.valid ? imuDat.gyroX : -1;
+        dataRow.gyroY = imuDat.valid ? imuDat.gyroY : -1;
+        dataRow.gyroZ = imuDat.valid ? imuDat.gyroZ : -1;
+        // dataRow.temperatureF = imuDat.valid ? imuDat.temperatureF : -1;
 
         // Add IMU data to JSON
         JsonObject imu = doc["imu"].to<JsonObject>();
@@ -352,6 +370,12 @@ void loop() {
             );
         }
 
+        // Add Soil Moisture to data row for logging
+        dataRow.airTempC = airDat.valid ? airDat.tempC : -1;
+        dataRow.airTempF = airDat.valid ? airDat.tempF : -1;
+        dataRow.airHumidity = airDat.valid ? airDat.humidity : -1;
+        dataRow.airPress = airDat.valid ? airDat.pressure : -1;
+
         // Add Air Data to JSON
         JsonObject air = doc["air"].to<JsonObject>();
         air["airTempF"] = airDat.valid ? airDat.tempF : -1;
@@ -375,6 +399,13 @@ void loop() {
             debug_printf("Waiting for GPS fix... Satellites in view: %d\n", loc.satellites);
         }
 
+        // Add Soil Moisture to data row for logging
+        dataRow.gpsLat = loc.valid ? loc.latitude : -1;
+        dataRow.gpsLon = loc.valid ? loc.longitude : -1;
+        dataRow.gpsAlt = loc.valid ? loc.altitudeMeters : -1;
+        dataRow.gpsSpeed = loc.valid ? loc.speedMPH : -1;
+        dataRow.gpsSats = loc.valid ? loc.satellites : -1;
+
         // Add GPS Data to JSON
         JsonObject gps = doc["gps"].to<JsonObject>();
 
@@ -390,6 +421,8 @@ void loop() {
         #endif
 
         doc["logs"] = log_buffer;
+
+        logger.append_row(dataRow);
 
         // Serialize and Send to Webpage
         char buffer[2048];
