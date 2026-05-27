@@ -18,7 +18,7 @@ bool StorageManager::begin(uint8_t csPin, uint8_t sckPin, uint8_t misoPin, uint8
     SPI.begin(sckPin, misoPin, mosiPin, _csPin);
 
     // Always attempt to mount SD, regardless of LittleFS state
-    if (SD.begin(_csPin, SPI, 4000000)) { // Replace 5 with your actual CS Pin
+    if (SD.begin(_csPin, SPI, 400000)) { // Replace 5 with your actual CS Pin
         _activeFS = &SD;
         _state = STORAGE_SD_ACTIVE;
         debug_println("StorageManager: SD card active.");
@@ -88,7 +88,7 @@ fs::FS* StorageManager::getDrive(String driveName) {
     return &LittleFS;
 }
 
-size_t StorageManager::getTotalBytes(String driveName) {
+uint64_t StorageManager::getTotalBytes(String driveName) {
     if (driveName == "sd") {
         if (_state == STORAGE_SD_ACTIVE) return SD.totalBytes();
         return 0; // Return 0 if the SD card is currently disconnected
@@ -96,7 +96,7 @@ size_t StorageManager::getTotalBytes(String driveName) {
     return LittleFS.totalBytes();
 }
 
-size_t StorageManager::getUsedBytes(String driveName) {
+uint64_t StorageManager::getUsedBytes(String driveName) {
     if (driveName == "sd") {
         if (_state == STORAGE_SD_ACTIVE) return SD.usedBytes();
         return 0; 
@@ -147,11 +147,13 @@ void StorageManager::processFallbackDump() {
     debug_println("StorageManager: Dump complete. Fallback file deleted.");
 }
 
+// TODO: Get a smarter way to predict row size
 uint8_t StorageManager::getBytesPerRow(String driveName) {
     // For simplicity, return fixed values. In a real implementation, this could be dynamic or configurable.
     return 80; // Default to 80 bytes per row
 }
 
+// TODO: Get a smarter way to predict interval
 uint8_t StorageManager::getIntervalMinutes(String driveName) {
     // For simplicity, return fixed values. In a real implementation, this could be dynamic or configurable.
     return 15; // Default to 15 minutes

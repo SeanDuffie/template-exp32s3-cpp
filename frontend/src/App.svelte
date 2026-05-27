@@ -487,10 +487,10 @@
                 {:else}
                     <div>
                         <div class="stat-row">
-                            <span class="label">Space Used:</span> {littleFS.usedKB} / {littleFS.totalKB} KB ({littleFS.percentUsed}%)
+                            <span class="label">Space Used:</span> {littleFS.usedKB.toLocaleString()} / {littleFS.totalKB.toLocaleString()} KB ({littleFS.percentUsed.toLocaleString()}%)
                         </div>
                         <div class="stat-estimate" style="color: var(--term-text); font-weight: bold;">
-                            Estimated logging time remaining: {littleFS.estimatedDaysLeft} days
+                            Estimated logging time remaining: {littleFS.estimatedDaysLeft.toLocaleString()} days
                         </div>
                     </div>
                     <table class="file-table">
@@ -532,10 +532,10 @@
                 {:else}
                     <div>
                         <div class="stat-row">
-                            <span class="label">Space Used:</span> {sdFS.usedKB} / {sdFS.totalKB} KB ({sdFS.percentUsed}%)
+                            <span class="label">Space Used:</span> {sdFS.usedKB.toLocaleString()} / {sdFS.totalKB.toLocaleString()} KB ({sdFS.percentUsed.toLocaleString()}%)
                         </div>
                         <div class="stat-estimate" style="color: var(--term-text); font-weight: bold;">
-                            Estimated logging time remaining: {sdFS.estimatedDaysLeft} days
+                            Estimated logging time remaining: {sdFS.estimatedDaysLeft.toLocaleString()} days
                         </div>
                     </div>
                     <table class="file-table">

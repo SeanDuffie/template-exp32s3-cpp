@@ -25,8 +25,8 @@ public:
     bool appendLog(const char* filepath, const char* data);
     bool deleteFile(const char* filepath, String driveName = "littlefs");
     fs::FS* getDrive(String driveName);
-    size_t getTotalBytes(String driveName);
-    size_t getUsedBytes(String driveName);
+    uint64_t getTotalBytes(String driveName);
+    uint64_t getUsedBytes(String driveName);
     void checkSDConnection();
     void processFallbackDump();
     uint8_t getBytesPerRow(String driveName);
