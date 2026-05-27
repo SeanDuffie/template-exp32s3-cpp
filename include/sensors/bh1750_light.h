@@ -2,6 +2,8 @@
 #include <Wire.h>
 #include <BH1750.h>
 
+#include "core/debug.h"
+
 struct LuxData {
     float lux;
     bool valid;

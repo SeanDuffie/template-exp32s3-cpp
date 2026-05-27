@@ -3,6 +3,8 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 
+#include "core/debug.h"
+
 struct IMUData {
     float accelX, accelY, accelZ; // m/s^2
     float gyroX, gyroY, gyroZ;    // rad/s

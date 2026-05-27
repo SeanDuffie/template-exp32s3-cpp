@@ -1,5 +1,4 @@
 #include "sensors/ds3231_rtc.h"
-#include "core/debug.h"
 
 DS3231Sensor::DS3231Sensor(TwoWire& wireBus) 
     : _wire(wireBus) {}

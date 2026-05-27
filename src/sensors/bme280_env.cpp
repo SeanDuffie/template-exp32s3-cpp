@@ -1,9 +1,9 @@
 #include "sensors/bme280_env.h"
-#include "core/debug.h"
 
-// BME280Sensor::BME280Sensor(SPIClass& spiBus, uint8_t csPin) 
+// BME280Sensor::BME280Sensor(SPIClass& spiBus, uint8_t csPin)
 //     : _bme(csPin, &spiBus), _csPin(csPin) {}
-BME280Sensor::BME280Sensor(TwoWire& wireBus, uint8_t address) 
+// The BME280 uses 0x76 or 0x77 for I2C, depending on the state of the SDO pin. 0x76 is more common, but check your module's datasheet to be sure.
+BME280Sensor::BME280Sensor(TwoWire& wireBus, uint8_t address)
     : _wire(wireBus), _address(address) {}
 
 bool BME280Sensor::begin() {

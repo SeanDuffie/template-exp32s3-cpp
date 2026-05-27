@@ -2,6 +2,8 @@
 #include <HardwareSerial.h>
 #include <TinyGPS++.h>
 
+#include "core/debug.h"
+
 struct GPSData {
     double latitude;
     double longitude;

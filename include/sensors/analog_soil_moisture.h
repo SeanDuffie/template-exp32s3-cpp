@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
+#include "core/debug.h"
+
 struct MoistureData {
     float percentage;  // 0.0% to 100.0%
     uint16_t rawValue; // Exposed for calibration purposes

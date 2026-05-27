@@ -1,5 +1,4 @@
 #include "sensors/analog_soil_moisture.h"
-#include "core/debug.h"
 
 AnalogMoistureSensor::AnalogMoistureSensor(uint8_t analogPin, uint16_t airValue, uint16_t waterValue) 
     : _pin(analogPin), _airValue(airValue), _waterValue(waterValue) {}

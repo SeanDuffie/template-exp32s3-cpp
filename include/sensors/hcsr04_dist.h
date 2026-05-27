@@ -1,6 +1,8 @@
 #pragma once
 #include <Arduino.h>
 
+#include "core/debug.h"
+
 struct DistanceData {
     float distanceCM;
     float distanceInches;

@@ -1,11 +1,13 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
-#include "debug.h"
+#include "core/StorageManager.h"
+#include "core/debug.h"
+#include "core/datalogger.h"
 
-#include "network.h"
-#include "ota.h"
-#include "webserver.h"
+#include "network/network.h"
+#include "network/ota.h"
+#include "network/webserver.h"
 
 /** Available Left Pins */
 // #define GND 1
@@ -25,7 +27,7 @@
 #define STRP46 46 // Pull Down Strapping Pin
 #define I2C_SCA 9
 #define I2C_SCL 10
-#define BME_CS 11
+#define SD_CS 11
 #define SPI_SCK 12
 #define SPI_MOSI 13
 #define SPI_MISO 14
@@ -52,28 +54,31 @@
 static bool led_state = false;
 #define RGB_LED_PIN 38
 
-#define USE_TEMP false
-#define USE_MOIST false
 #define USE_LUX true
+#define USE_MOIST false
+#define USE_TEMP false
 #define USE_AIR false
-#define USE_IMU true
+#define USE_IMU false
 #define USE_GPS false
 #define USE_RTC false
-#define USE_SD false
 
-#if USE_LUX || USE_IMU
+#if USE_LUX || USE_IMU || USE_AIR
 #define USE_I2C true
 // TWO WIRE
 #include <Wire.h>
 TwoWire I2C_Bus = TwoWire(0);
 #endif
 
-#if USE_AIR || USE_SD
-#define USE_SPI true
-// SPI
-// Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
-#include <SPI.h>
-SPIClass SPI_Bus = SPIClass(FSPI);
+// #if USE_
+// // SPI
+// // Define the SPI bus (VSPI is typically standard for external peripherals on ESP32)
+// #include <SPI.h>
+// SPIClass SPI_Bus = SPIClass(FSPI);
+// #endif
+
+#if USE_LUX
+#include "bh1750_light.h"
+BH1750Sensor luxSensor(I2C_Bus, 0x23);
 #endif
 
 #if USE_MOIST
@@ -89,14 +94,9 @@ DS18B20Sensor soilTempSensor(oneWireBus, 0);
 // DS18B20Sensor soilTempSensor2(oneWireBus, 1);
 #endif
 
-#if USE_LUX
-#include "bh1750_light.h"
-BH1750Sensor luxSensor(I2C_Bus, 0x23);
-#endif
-
 #if USE_AIR
 #include "bme280_env.h"
-BME280Sensor AirEnv = BME280Sensor(SPI_Bus, BME_CS);
+BME280Sensor AirEnv = BME280Sensor(I2C_Bus, 0x76);
 #endif
 
 #if USE_IMU
@@ -115,15 +115,26 @@ NEO6MSensor GPS(GPS_Serial);
 DS3231Sensor RTC(I2C_Bus);
 #endif
 
-#if USE_SD // TODO
-// Inject the bus and assign the CS pin (e.g., GPIO 10)
-SDManager mySD(SPI_Bus, 10);
-#endif
+uint32_t last_sd_check = 0;
+const uint32_t SD_CHECK_INTERVAL = 15000; // Check every 15 seconds
+
+Datalogger logger(1000*60*15); // 15 minute logging interval
+unsigned long start_time;
 
 void setup() {
     Serial.begin(115200);
-    // Wait for native USB CDC connection
+
+    // Wait for native USB CDC connection. Comment this out for faster boot.
     while (!Serial && millis() < 5000) { delay(10); }
+
+    // 1. Initialize Storage First
+    if (!FileSystem.begin(SD_CS, SPI_SCK, SPI_MISO, SPI_MOSI)) {
+        while (1) {  // Halt execution, web server cannot run
+            Serial.println("FATAL: LittleFS failed to mount. System halted.");
+            sleep(1); // Sleep to reduce CPU usage while halted
+            yield(); 
+        }
+    }
 
     // 1. Establish Wi-Fi (Blocking)
     setup_wifi_manager();
@@ -131,10 +142,21 @@ void setup() {
     setup_debug();
     // 3. Initializes LittleFS and endpoints
     setup_webserver();
-    // 4. Initialize OTA Server
+    // 4. Initialize Webserver Endpoints
+    setup_endpoints();
+    // 5. Initialize OTA Server
     setup_ota();
-    // 5. Pull time from NTP server
+    // 6. Pull time from NTP server
     setup_ntp();
+
+    #if USE_I2C
+    I2C_Bus.begin(I2C_SCA, I2C_SCL); // TWO WIRE (I2C - SDA, SCL)
+    // I2C_Bus.setClock(100000); // Force standard 100kHz clock
+    #endif
+
+    #if USE_LUX
+    luxSensor.begin();
+    #endif
 
     #if USE_MOIST
     soilMoistureSensor.begin();    // Capacitive ADC
@@ -145,20 +167,16 @@ void setup() {
     // soilTempSensor2.begin();
     #endif
 
-    #if USE_GPS
-    GPS.begin();        // UART
-    #endif
-
-    #if USE_I2C
-    I2C_Bus.begin(I2C_SCA, I2C_SCL); // TWO WIRE (I2C - SDA, SCL)
+    #if USE_AIR
+    AirEnv.begin();
     #endif
 
     #if USE_IMU
     IMU.begin();
     #endif
 
-    #if USE_LUX
-    luxSensor.begin();
+    #if USE_GPS
+    GPS.begin();        // UART
     #endif
 
     #if USE_RTC
@@ -169,26 +187,15 @@ void setup() {
     // }
     #endif
 
-    // I2C_Bus.setClock(100000); // Force standard 100kHz clock
-
-    #if USE_SPI
-    // SPI
-    // Initialize SPI pins: SCK, MISO, MOSI, CS (CS is handled by the SD library)
-    SPI_Bus.begin(SPI_SCK, SPI_MISO, SPI_MOSI);
-    #endif
-
-    #if USE_AIR
-    AirEnv.begin();
-    #endif
-
-    #if USE_SD
-    SD.begin();
-    SD.appendLog("/sensor_log.csv", "Timestamp,Temp,Moisture");
-    #endif
+    // 7. Initialize datalogger, uses either the SD card or LittleFS.
+    start_time = millis();
+    logger.begin("/sensor_log.csv", "Timestamp,Uptime_ms,lux"); //,soilMoisture,soilMoistureADC,soilTempC,soilTempF,airTempC,airTempF,humidity,pressure,accelX,accelY,accelZ,gyroX,gyroY,gyroZ,gpsLat,gpsLon,gpsAlt,gpsSpeed,gpsSats");
 }
 
 
 void loop() {
+    sDataRow dataRow;
+
     // Process incoming OTA requests
     ArduinoOTA.handle();
 
@@ -208,17 +215,19 @@ void loop() {
         JsonDocument doc;
 
         String tstmp = get_timestamp();
+        dataRow.timestamp = tstmp;
+        dataRow.uptime = millis() - start_time;
         debug_printf("Current Time: %s\n", tstmp.c_str());
         last_millis = millis();
 
         // Add connected hardware flags
         JsonObject active = doc["active"].to<JsonObject>();
-        active["soilTemp"] = USE_TEMP;
-        active["soilMoist"] = USE_MOIST;
-        active["air"] = USE_AIR;
         active["lux"] = USE_LUX;
-        active["gps"] = USE_GPS;
+        active["soilMoist"] = USE_MOIST;
+        active["soilTemp"] = USE_TEMP;
+        active["air"] = USE_AIR;
         active["imu"] = USE_IMU;
+        active["gps"] = USE_GPS;
 
         /** RGB LED SECTION */
         led_state = !led_state;
@@ -229,6 +238,21 @@ void loop() {
         // JSONify System Metadata
         doc["timestamp"] = tstmp.c_str();
         doc["uptime"] = last_millis / 1000;
+
+        /** Lux (BH1750) */
+        #if USE_LUX
+        LuxData luxDat = luxSensor.readData();
+        if (luxDat.valid) {
+            debug_printf( "Lux: %.1f lux\n", luxDat.lux);
+        }
+
+        // Add Lux to data row for logging
+        dataRow.lux = luxDat.valid ? luxDat.lux : -1;
+
+        // Add Lux to Json
+        JsonObject lux = doc["lux"].to<JsonObject>();
+        lux["lux"] = luxDat.valid ? luxDat.lux : -1;
+        #endif
 
         /** Compost Moisture */
         #if USE_MOIST
@@ -241,7 +265,11 @@ void loop() {
             );
         }
 
-        // Add Soil Temperature to Json
+        // Add Soil Moisture to data row for logging
+        dataRow.soilMoisture = soilMoisture.valid ? soilMoisture.percentage : -1;
+        dataRow.soilMoistureADC = soilMoisture.valid ? soilMoisture.rawValue : -1;
+
+        // Add Soil Moisture to Json
         JsonObject soil = doc["soil"].to<JsonObject>();
         soil["moisture"] = soilMoisture.valid ? soilMoisture.percentage : -1;
         soil["moistureADC"] = soilMoisture.valid ? soilMoisture.rawValue : -1;
@@ -266,6 +294,10 @@ void loop() {
         //     );
         // }
 
+        // Add Soil Temperature to data row for logging
+        dataRow.soilTempC = soilTemp.valid ? soilTemp.tempC : -1;
+        dataRow.soilTempF = soilTemp.valid ? soilTemp.tempF : -1;
+
         // Add Soil Temperature to Json
         #if !USE_MOIST
         JsonObject soil = doc["soil"].to<JsonObject>();
@@ -276,16 +308,37 @@ void loop() {
         // soil["tempC2"] = soilTemp2.valid ? soilTemp2.tempC : -1;
         #endif
 
-        /** Lux (BH1750) */
-        #if USE_LUX
-        LuxData luxDat = luxSensor.readData();
-        if (luxDat.valid) {
-            debug_printf( "Lux: %.1f lux\n", luxDat.lux);
+        /** Air Temperature & Humidity (BME280) */
+        #if USE_AIR
+        AirData airDat = AirEnv.readData();
+        if (airDat.valid) {
+            debug_printf(
+                "Air Temperature: %.1f°C / %.1f°F\n",
+                airDat.tempC,
+                airDat.tempF
+            );
+            debug_printf(
+                "Air Humidity: %.0f %%\n",
+                airDat.humidity
+            );
+            debug_printf(
+                "Air Pressure: %.1f hPa\n",
+                airDat.pressure
+            );
         }
 
-        // Add Lux to Json
-        JsonObject lux = doc["lux"].to<JsonObject>();
-        lux["lux"] = luxDat.valid ? luxDat.lux : -1;
+        // Add Soil Moisture to data row for logging
+        dataRow.airTempC = airDat.valid ? airDat.tempC : -1;
+        dataRow.airTempF = airDat.valid ? airDat.tempF : -1;
+        dataRow.airHumidity = airDat.valid ? airDat.humidity : -1;
+        dataRow.airPress = airDat.valid ? airDat.pressure : -1;
+
+        // Add Air Data to JSON
+        JsonObject air = doc["air"].to<JsonObject>();
+        air["airTempF"] = airDat.valid ? airDat.tempF : -1;
+        air["airTempC"] = airDat.valid ? airDat.tempC : -1;
+        air["airHumidity"] = airDat.valid ? airDat.humidity : -1;
+        air["airPress"] = airDat.valid ? airDat.pressure : -1;
         #endif
 
         /** IMU Orientation (MPU6050) */
@@ -310,6 +363,15 @@ void loop() {
             );
         }
 
+        // Add IMU data to data row for logging
+        dataRow.accelX = imuDat.valid ? imuDat.accelX : -1;
+        dataRow.accelY = imuDat.valid ? imuDat.accelY : -1;
+        dataRow.accelZ = imuDat.valid ? imuDat.accelZ : -1;
+        dataRow.gyroX = imuDat.valid ? imuDat.gyroX : -1;
+        dataRow.gyroY = imuDat.valid ? imuDat.gyroY : -1;
+        dataRow.gyroZ = imuDat.valid ? imuDat.gyroZ : -1;
+        // dataRow.temperatureF = imuDat.valid ? imuDat.temperatureF : -1;
+
         // Add IMU data to JSON
         JsonObject imu = doc["imu"].to<JsonObject>();
         imu["accelX"] = imuDat.valid ? imuDat.accelX : -1;
@@ -319,33 +381,6 @@ void loop() {
         imu["gyroY"] = imuDat.valid ? imuDat.gyroY : -1;
         imu["gyroZ"] = imuDat.valid ? imuDat.gyroZ : -1;
         imu["tempF"] = imuDat.valid ? imuDat.temperatureF : -1;
-        #endif
-
-        /** Air Temperature & Humidity (BME280) */
-        #if USE_AIR
-        AirData airDat = AirEnv.readData();
-        if (airDat.valid) {
-            debug_printf(
-                "Air Temperature: %.1f°C / %.1f°F\n",
-                airDat.tempC,
-                airDat.tempF
-            );
-            debug_printf(
-                "Air Humidity: %.0f %%\n",
-                airDat.humidity
-            );
-            debug_printf(
-                "Air Pressure: %.1f hPa\n",
-                airDat.pressure
-            );
-        }
-
-        // Add Air Data to JSON
-        JsonObject air = doc["air"].to<JsonObject>();
-        air["airTempF"] = airDat.valid ? airDat.tempF : -1;
-        air["airTempC"] = airDat.valid ? airDat.tempC : -1;
-        air["airHumidity"] = airDat.valid ? airDat.humidity : -1;
-        air["airPress"] = airDat.valid ? airDat.pressure : -1;
         #endif
 
         /** GPS SECTION */
@@ -363,6 +398,13 @@ void loop() {
             debug_printf("Waiting for GPS fix... Satellites in view: %d\n", loc.satellites);
         }
 
+        // Add Soil Moisture to data row for logging
+        dataRow.gpsLat = loc.valid ? loc.latitude : -1;
+        dataRow.gpsLon = loc.valid ? loc.longitude : -1;
+        dataRow.gpsAlt = loc.valid ? loc.altitudeMeters : -1;
+        dataRow.gpsSpeed = loc.valid ? loc.speedMPH : -1;
+        dataRow.gpsSats = loc.valid ? loc.satellites : -1;
+
         // Add GPS Data to JSON
         JsonObject gps = doc["gps"].to<JsonObject>();
 
@@ -379,6 +421,8 @@ void loop() {
 
         doc["logs"] = log_buffer;
 
+        logger.append_row(dataRow);
+
         // Serialize and Send to Webpage
         char buffer[2048];
         serializeJson(doc, buffer);
@@ -386,6 +430,12 @@ void loop() {
         log_buffer = "";
 
         handle_telnet();
+    }
+
+    // Periodically check if the SD card was reinserted (only runs if currently in fallback mode)
+    if (millis() - last_sd_check >= SD_CHECK_INTERVAL) {
+        FileSystem.checkSDConnection();
+        last_sd_check = millis();
     }
 
     /** OTA SECTION */
